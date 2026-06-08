@@ -578,6 +578,10 @@ export default function App() {
     const dreamCatsMap = DREAMSTIME_CATEGORIES.map(c => `ID ${c.id}="${c.en}"`).join(', ');
     const dreamCatsExact = DREAMSTIME_CATEGORIES.map(c => c.en).join(', ');
 
+    const extractData = await extractDataJIT(fileItem, isVid ? settings.frameCount : 1, signal);
+    const frames = extractData?.frames || [];
+    const isTransparent = extractData?.isTransparent || false;
+
     const transparentInstruction = (isTransparent && !isVectorMode) 
         ? "\n\nATURAN MUTLAK PNG: Ini adalah gambar CUTOUT/TRANSPARAN. JANGAN gunakan keyword 'white background', 'isolated on white'. WAJIB GUNAKAN KEYWORD: 'transparent background', 'png', 'isolated', 'cutout', 'no background'." 
         : "";
@@ -1289,8 +1293,8 @@ Kembalikan seluruh data JSON (English & Indonesia) secara lengkap dan sinkron.`;
                               
                               <div className="text-blue-600">
                                 <div className="text-[9px] font-bold mb-0.5 flex items-center gap-1 uppercase tracking-widest opacity-80">
-                                  Keyword
-                                  <button onClick={() => handleCopyClick(f.displayLang === 'EN' ? f.metadata.keywords_en : f.metadata.keywords_id, `${f.id}-key`)} className={`transition-colors ${copiedId === `${f.id}-key` ? 'text-blue-500 scale-110' : 'text-inherit hover:opacity-70'}`} title="Salin Keyword"><CopyIcon /></button>
+                                  {isArab ? 'Tag' : 'Keyword'}
+                                  <button onClick={() => handleCopyClick(f.displayLang === 'EN' ? f.metadata.keywords_en : f.metadata.keywords_id, `${f.id}-key`)} className={`transition-colors ${copiedId === `${f.id}-key` ? 'text-blue-500 scale-110' : 'text-inherit hover:opacity-70'}`} title={isArab ? "Salin Tag" : "Salin Keyword"}><CopyIcon /></button>
                                 </div>
                                 <div className="font-medium">{f.displayLang === 'EN' ? f.metadata.keywords_en : f.metadata.keywords_id}</div>
                               </div>
