@@ -1,0 +1,1604 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+// =====================================================================
+// === TEMPAT MENGISI URL HUGGING FACE (BISA BANYAK, OTOMATIS DIACAK) ===
+// =====================================================================
+const HUGGING_FACE_URLS = [
+    "https://isasatu-render-mp4-1.hf.space"
+];
+
+// --- FUNGSI WAJIB ---
+const R = Math.random;
+const apiKey = ""; 
+
+// --- INSTRUKSI 3 LAPIS AI (ARSITEKTUR JS MOTION ENGINE) ---
+const SYSTEM_LAYER_1 = `LAPIS 1 - FORMAT OUTPUT (ATURAN MUTLAK):
+- Output HARUS HANYA berupa kode JavaScript murni. 
+- DILARANG KERAS menggunakan tag markdown (seperti \`\`\`javascript) atau teks basa-basi.
+- DILARANG KERAS menggunakan HTML, React, Canvas API, atau library eksternal.
+- Kode WAJIB memiliki tepat dua fungsi utama dengan struktur ini:
+  function create(svg, width, height) { ... }
+  function update(time, svg, width, height) { ... }`;
+
+const SYSTEM_LAYER_2 = `LAPIS 2 - ATURAN PEMBUATAN ELEMEN (FUNGSI CREATE):
+- Semua elemen vektor (path, rect, circle, dll) WAJIB dibuat SATU KALI saja di dalam fungsi create() menggunakan document.createElementNS("http://www.w3.org/2000/svg", "nama_tag").
+- Pastikan memiliki Background (buat elemen rect paling pertama dengan width/height 100%) kecuali diminta transparan.
+- Simpan referensi elemen yang ingin dianimasikan ke dalam state internal svg. Contoh: svg._state = {}; svg._state.circle1 = myCircle;
+- Sisakan Safe Margin minimal 10% dari tepi viewBox untuk ruang aman teks overlay (Aturan Wajib Microstock).
+- Batasi palet warna (maksimal 3-4 warna) agar terlihat elegan dan profesional.`;
+
+const SYSTEM_LAYER_3 = `LAPIS 3 - MATEMATIKA MOTION & ANTI-MEMORY LEAK (FUNGSI UPDATE):
+- Fungsi update(time, svg, width, height) akan dipanggil puluhan kali per detik. Waktu (time) berjalan dalam satuan detik (desimal).
+- ATURAN KRITIS (ANTI-MEMORY LEAK): DILARANG KERAS memanggil document.createElementNS di dalam fungsi update()! Fungsi update HANYA BOLEH mengubah atribut (setAttribute seperti transform, opacity, stroke-dashoffset) dari elemen yang sudah disiapkan di create().
+- LOOPING SEMPURNA (MUTLAK): Deklarasikan \`let t = time % [DURASI];\` di awal fungsi update agar animasi kembali ke frame awal dengan mulus (seamless loop) tanpa lompatan visual.
+- MATEMATIKA EASING: Gunakan fungsi matematika (seperti Math.sin, Math.cos, map(), clamp(), easeOutElastic, dll) untuk memanipulasi atribut secara dinamis. Ciptakan gerak yang sangat luwes, membal (bouncy), organik, dan kompleks layaknya motion graphic profesional.
+- SEQUENCING (TRANSISI SCENE): Jika terdapat beberapa scene berantai, bagi waktu \`t\` menggunakan fungsi map() atau percabangan if-else dengan transisi opacity/transform silang (crossfade) yang rapi.`;
+
+// --- ICONS ---
+const CustomSpinner = ({ className = "h-6 w-6 text-[#0891B3]" }) => (
+    <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
+const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+const CheckCircleIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className || "w-[13px] h-[13px]"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+const XCircleIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className || "w-[13px] h-[13px]"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>;
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>;
+const SparklesIcon = ({ className, style }) => <svg className={className} style={style} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>;
+const Wand2Icon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className || "w-[14px] h-[14px]"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>;
+const PlayIcon = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>;
+const PauseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>;
+const DownloadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>;
+const FileTextIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
+const EyeIcon = ({ className }) => <svg className={className || ""} xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>;
+const AlertTriangleIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
+const ChevronDownIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"/></svg>;
+const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+const CopyIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>;
+const UploadCloudIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>;
+const CodeIcon = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>;
+const SendIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>;
+const TypeIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>;
+const FileIcon = ({ className }) => <svg xmlns="http://www.w3.org/2000/svg" className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>;
+const BriefcaseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>;
+const CoffeeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>;
+const UndoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>;
+const RedoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>;
+
+// --- KATEGORI LAMA (BAWAAN) ---
+const CATEGORIES = [
+    "None", "Skeleton UI Mockup", "Filled Outline Vektor", "Diagram UI",
+    "Flat Vektor Line Art", "Line Drawing", "Animasi Vektor Berantai",
+    "Text Animation", "Template Presentasi"
+];
+
+// --- RESOLUSI & TEKNOLOGI ---
+const RATIOS = ['16:9', '1:1', '9:16'];
+const RESOLUTIONS = ['1080', '2k', '4k'];
+const DIMENSIONS = {
+    '16:9': { '1080': '1920x1080', '2k': '2560x1440', '4k': '3840x2160' },
+    '1:1': { '1080': '1080x1080', '2k': '1440x1440', '4k': '2160x2160' },
+    '9:16': { '1080': '1080x1920', '2k': '1440x2560', '4k': '2160x3840' }
+};
+const DURATIONS = [5, 10, 15, 20];
+
+// WRAPPER TERPUSAT: Mengeksekusi JS Buatan AI di dalam Browser
+// KUNCI: Untuk thumbnail gunakan 'slice' (zoom penuhi kotak estetik). Untuk modal/preview gunakan 'meet' (utuh 100% presisi tanpa terpotong).
+const wrapSvgAsHtml = (jsCode, resolution = '1920x1080', duration = 10, viewMode = 'preview') => {
+    const isThumb = viewMode === 'thumbnail';
+    const isPreview = viewMode === 'preview';
+    const [w, h] = resolution.split('x');
+
+    const playerStyles = isPreview ? `
+    .player-bar { height: 44px; background: #ffffff; border: 1px solid #0891B3; border-radius: 8px; padding: 0 16px; display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-shrink: 0; }
+    .play-btn { background: #0891B3; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; transition: background 0.2s; }
+    .play-btn:hover { background: #06738F; }
+    .play-btn svg { width: 10px; height: 10px; fill: currentColor; }
+    .progress-track { flex: 1; height: 6px; background: #e2e8f0; border-radius: 4px; position: relative; cursor: pointer; }
+    .progress-fill { height: 100%; background: #0891B3; width: 0%; pointer-events: none; border-radius: 4px; position: relative; }
+    .progress-thumb { position: absolute; right: -6px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; background: #fff; border: 2px solid #0891B3; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.3); pointer-events: none; }
+    .time-label { font-size: 11px; font-weight: 700; color: #475569; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+    ` : '';
+
+    const playerHtml = isPreview ? `
+    <div class="player-bar">
+        <button class="play-btn" id="btnPlayPause">
+            <svg id="iconPause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+            <svg id="iconPlay" viewBox="0 0 24 24" style="display:none;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        </button>
+        <div class="progress-track" id="track">
+            <div class="progress-fill" id="fill"><div class="progress-thumb"></div></div>
+        </div>
+        <div class="time-label" id="timeDisp">0.0s</div>
+    </div>
+    ` : '';
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100vh; overflow: hidden; background: transparent; display: flex; flex-direction: column; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .svg-wrapper { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; overflow: hidden; ${isPreview ? 'background: #f8fafc; border-radius: 8px; border: 1px solid #cbd5e1;' : 'background: transparent;'} }
+    svg { display: block; width: 100%; height: 100%; }
+    ${playerStyles}
+</style>
+</head>
+<body>
+    <div class="svg-wrapper">
+        <svg id="mainCanvas" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="${isThumb ? 'xMidYMid slice' : 'xMidYMid meet'}"></svg>
+    </div>
+    ${playerHtml}
+
+    <script>
+        ${jsCode}
+
+        const duration = ${duration}; const width = ${w}; const height = ${h};
+        let isPlaying = ${isThumb ? 'false' : 'true'}; let startTime = performance.now(); let accumulatedTime = 0;
+        const svg = document.getElementById('mainCanvas'); const btn = document.getElementById('btnPlayPause');
+        const iconPlay = document.getElementById('iconPlay'); const iconPause = document.getElementById('iconPause');
+        const fill = document.getElementById('fill'); const timeDisp = document.getElementById('timeDisp'); const track = document.getElementById('track');
+
+        try { if (typeof create === 'function') create(svg, width, height); } catch (err) {}
+        
+        let isDragging = false;
+        const updateTimeFromEvent = (clientX) => {
+            if(!track) return;
+            const rect = track.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+            const targetTime = (percent / 100) * duration;
+            accumulatedTime = targetTime;
+            try { if (typeof update === 'function') update(targetTime, svg, width, height); } catch (err) {}
+            if(fill && timeDisp) { fill.style.width = percent + '%'; timeDisp.innerText = targetTime.toFixed(1) + 's'; }
+        };
+
+        if (track) {
+            track.addEventListener('mousedown', (e) => { isDragging = true; updateTimeFromEvent(e.clientX); });
+            window.addEventListener('mousemove', (e) => { if(isDragging) updateTimeFromEvent(e.clientX); });
+            window.addEventListener('mouseup', () => { if(isDragging) { isDragging = false; startTime = performance.now(); } });
+        }
+
+        const renderFrame = () => {
+            if(!isPlaying) { requestAnimationFrame(renderFrame); return; }
+            const now = performance.now(); const elapsed = (now - startTime) / 1000;
+            let current = (accumulatedTime + elapsed) % duration;
+            try { if (typeof update === 'function') update(current, svg, width, height); } catch (err) {}
+            if (fill && timeDisp && !isDragging) { fill.style.width = ((current / duration) * 100) + '%'; timeDisp.innerText = current.toFixed(1) + 's'; }
+            requestAnimationFrame(renderFrame);
+        };
+        requestAnimationFrame(renderFrame);
+
+        if (typeof update === 'function' && !isPlaying) update(0, svg, width, height);
+
+        if (btn && track) {
+            btn.addEventListener('click', () => {
+                if(isPlaying) {
+                    isPlaying = false; iconPause.style.display = 'none'; iconPlay.style.display = 'block';
+                    accumulatedTime = (accumulatedTime + (performance.now() - startTime) / 1000) % duration;
+                } else {
+                    isPlaying = true; iconPlay.style.display = 'none'; iconPause.style.display = 'block';
+                    startTime = performance.now();
+                }
+            });
+        }
+    </script>
+</body>
+</html>`;
+};
+
+// GENERATE RANDOM TASK ID UNTUK HF API (5 Huruf + 5 Angka)
+const generateRandomTaskID = () => {
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    let str = "";
+    for(let i=0; i<5; i++) str += letters.charAt(Math.floor(Math.random() * letters.length));
+    const nums = Math.floor(10000 + Math.random() * 90000).toString();
+    return str + nums;
+};
+
+export default function App() {
+    const [currentTime, setCurrentTime] = useState(new Date());
+    const [inputMode, setInputMode] = useState('text');
+
+    // Teks & File Mode States
+    const promptMediaInputRef = useRef(null);
+    const [uploadedFilesData, setUploadedFilesData] = useState([]);
+    const [selectedRatio, setSelectedRatio] = useState('16:9');
+    const [selectedResolution, setSelectedResolution] = useState('1080');
+    const [selectedDuration, setSelectedDuration] = useState(10);
+    const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+    const [magicKeyword, setMagicKeyword] = useState('');
+    const [magicCount, setMagicCount] = useState(10);
+    const [magicSuggestions, setMagicSuggestions] = useState([]);
+    const [isGeneratingIdeas, setIsGeneratingIdeas] = useState(false);
+    const [promptBuilders, setPromptBuilders] = useState([{ id: Date.now(), topic: '', categoryLeft: 'None', categoryRight: 'None', customStyle: null, amount: 1, duration: 10 }]);
+    const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
+    const [blueprints, setBlueprints] = useState([]);
+    const [blueprintQuantity, setBlueprintQuantity] = useState(1);
+    const [editingBlueprintId, setEditingBlueprintId] = useState(null);
+    const [editBpForm, setEditBpForm] = useState({});
+    const [instructions, setInstructions] = useState('');
+    const [negativePrompt, setNegativePrompt] = useState('');
+    const [workerCount, setWorkerCount] = useState(3);
+    const [workerDelay, setWorkerDelay] = useState(5);
+    const [fileQuantity, setFileQuantity] = useState(1);
+
+    // Render Mode States
+    const renderMediaInputRef = useRef(null);
+    const [uploadedRenderFiles, setUploadedRenderFiles] = useState([]);
+    const [renderFps, setRenderFps] = useState(60);
+    const [renderBitrate, setRenderBitrate] = useState(20);
+    const [renderQuantity, setRenderQuantity] = useState(1);
+
+    // Global States
+    const [zipFilename, setZipFilename] = useState('');
+    const [cards, setCards] = useState([]);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
+    const [isZipping, setIsZipping] = useState(false);
+    const [isCopied, setIsCopied] = useState(false);
+    const [activeProcessGroup, setActiveProcessGroup] = useState(null);
+    
+    // Pagination 
+    const [itemsPerPage, setItemsPerPage] = useState(50);
+    const [currentPage, setCurrentPage] = useState(1);
+    
+    // Modals & Confirms
+    const [globalMessage, setGlobalMessage] = useState(null);
+    const [previewModal, setPreviewModal] = useState(null);
+    const [previewTab, setPreviewTab] = useState('motion'); // Tab dalam modal preview Render
+    const [editCardId, setEditCardId] = useState(null);
+    const [editCode, setEditCode] = useState('');
+    const [editChatInput, setEditChatInput] = useState('');
+    const [editTab, setEditTab] = useState('code'); // Tab Edit: Code vs Preview
+    const [isRevising, setIsRevising] = useState(false);
+    const [editHistory, setEditHistory] = useState([]);
+    const [editHistoryIndex, setEditHistoryIndex] = useState(-1);
+    const [fileToDelete, setFileToDelete] = useState(null);
+    const [clearAllConfirm, setClearAllConfirm] = useState(false);
+    const [clearAllFilesConfirm, setClearAllFilesConfirm] = useState(false);
+    const [fileToDeleteConfirm, setFileToDeleteConfirm] = useState(null);
+    const [blueprintToDeleteConfirm, setBlueprintToDeleteConfirm] = useState(null);
+    const [clearAllBlueprintsConfirm, setClearAllBlueprintsConfirm] = useState(false);
+    const [filePreviewModal, setFilePreviewModal] = useState(null);
+
+    const cardsRef = useRef([]);
+    const isPausedRef = useRef(false);
+    const isGeneratingRef = useRef(false);
+    const abortControllerRef = useRef(null);
+
+    useEffect(() => { cardsRef.current = cards; }, [cards]);
+
+    useEffect(() => {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Share+Tech&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const timeString = currentTime.toLocaleTimeString('id-ID', { hour12: false });
+    const dateString = currentTime.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    // FILTER CARDS BERDASARKAN MODE AKTIF
+    const activeCards = cards.filter(c => inputMode === 'render' ? c.mode === 'render' : c.mode !== 'render');
+
+    const computedTaskCount = 
+        inputMode === 'text' ? blueprints.length * (parseInt(blueprintQuantity) || 1) : 
+        inputMode === 'file' ? uploadedFilesData.length * (parseInt(fileQuantity) || 1) :
+        uploadedRenderFiles.length * (parseInt(renderQuantity) || 1);
+
+    const countPending = activeCards.filter(f => f.status === 'pending').length;
+    const countProcessing = activeCards.filter(f => f.status === 'processing').length;
+    const countSuccess = activeCards.filter(f => f.status === 'done').length;
+    const countFailed = activeCards.filter(f => f.status === 'failed').length;
+
+    const currentContextGroup = inputMode === 'render' ? 'render' : 'generate';
+    const isProcessMismatch = activeProcessGroup !== null && activeProcessGroup !== currentContextGroup;
+    const isTabGenerating = isGenerating && !isProcessMismatch;
+    const isTabPaused = isPaused && !isProcessMismatch;
+    const isTabProcessing = countProcessing > 0;
+
+    const canGenerate = (computedTaskCount > 0 || countPending > 0 || countFailed > 0) && !isTabGenerating && !isTabPaused && !isTabProcessing;
+    const canPauseResume = isTabGenerating || isTabProcessing || isTabPaused;
+    const isZipActive = countSuccess > 0;
+
+    const inputClass = "w-full text-xs py-1.5 px-2 border border-gray-300 rounded bg-white text-gray-900 focus:ring-2 focus:ring-[#0891B3] focus:outline-none focus:border-[#0891B3] transition-all disabled:bg-gray-100 disabled:text-gray-400 h-[30px]";
+
+    const fetchOnce = async (url, options, signal) => {
+        const response = await fetch(url, { ...options, signal });
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error?.message || `HTTP Error ${response.status}`);
+        }
+        return await response.json();
+    };
+
+    // --- IDEAS & PROMPTS (TEXT MODE) ---
+    const handleGenerateIdeas = async () => {
+        if (!magicKeyword.trim()) {
+            setGlobalMessage({ title: "Perhatian", type: "warning", text: "Silakan masukkan kata kunci utama untuk melacak ide!" });
+            return;
+        }
+        setIsGeneratingIdeas(true);
+        try {
+            const amount = parseInt(magicCount) || 10;
+            const systemPrompt = `You are a Motion Graphic & UI Asset Analyst. Brainstorm EXACTLY ${amount} highly profitable, creative, and specific ideas for individual web animation assets based on the provided base keyword.
+CRITICAL RULE: All object/theme text ideas MUST BE IN INDONESIAN LANGUAGE (Bahasa Indonesia). 
+Invent a highly descriptive and specific visual style name for each idea (e.g., "Isometric Cyberpunk", "Liquid Motion", "Paper Cutout", "Glassmorphism UI"). Do NOT restrict yourself to any standard styles, be wild and creative.
+Format strictly as a JSON object with a root key "suggestions": { "suggestions": [ { "text": "Ide spesifik dalam bahasa Indonesia", "style": "Custom Style Name Here" } ] }`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ parts: [{ text: `Kata Kunci Utama: ${magicKeyword.trim()}` }] }], systemInstruction: { parts: [{ text: systemPrompt }] }, generationConfig: { responseMimeType: "application/json" } };
+            const res = await fetchOnce(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            let textRes = res.candidates[0].content.parts[0].text;
+            const parsed = JSON.parse(textRes);
+            if (parsed.suggestions) setMagicSuggestions(parsed.suggestions.map(s => ({ ...s, addedId: null })));
+        } catch (err) {
+            setGlobalMessage({ title: "Error Sistem", type: "error", text: "Gagal meracik ide: " + err.message });
+        } finally { setIsGeneratingIdeas(false); }
+    };
+
+    const handleToggleIdea = (idx, idea) => {
+        if (magicSuggestions[idx].addedId) {
+            const idToRemove = magicSuggestions[idx].addedId;
+            setPromptBuilders(prev => {
+                if (prev.length === 1) return [{ id: Date.now() + R(), topic: '', categoryLeft: 'None', categoryRight: 'None', customStyle: null, amount: 1, duration: 10 }]; 
+                return prev.filter(b => b.id !== idToRemove); 
+            });
+            setMagicSuggestions(prev => prev.map((s, i) => i === idx ? { ...s, addedId: null } : s));
+        } else {
+            const newId = Date.now() + R();
+            setPromptBuilders(prev => {
+                const newRow = { id: newId, topic: idea.text, categoryLeft: 'None', categoryRight: idea.style, customStyle: idea.style, amount: 1, duration: 10 };
+                if (prev.length === 1 && prev[0].topic === '' && prev[0].categoryLeft === 'None' && prev[0].categoryRight === 'None') return [newRow];
+                return [...prev, newRow];
+            });
+            setMagicSuggestions(prev => prev.map((s, i) => i === idx ? { ...s, addedId: newId } : s));
+        }
+    };
+
+    const addBuilder = () => setPromptBuilders([...promptBuilders, { id: Date.now() + R(), topic: '', categoryLeft: 'None', categoryRight: 'None', customStyle: null, amount: 1, duration: 10 }]);
+    const removeBuilder = (id) => {
+        setPromptBuilders(prev => {
+            if (prev.length === 1) return [{ id: Date.now(), topic: '', categoryLeft: 'None', categoryRight: 'None', customStyle: null, amount: 1, duration: 10 }];
+            return prev.filter(b => b.id !== id);
+        });
+        setMagicSuggestions(prev => prev.map(s => s.addedId === id ? { ...s, addedId: null } : s));
+    };
+    
+    const updateBuilder = (id, field, value) => {
+        setPromptBuilders(prev => prev.map(b => {
+            if (b.id !== id) return b;
+            let updated = { ...b, [field]: value };
+            if (field === 'categoryLeft' && value !== 'None') updated.categoryRight = 'None';
+            if (field === 'categoryRight' && value !== 'None') updated.categoryLeft = 'None';
+            return updated;
+        }));
+        if (field === 'topic') setMagicSuggestions(prev => prev.map(s => s.addedId === id ? { ...s, addedId: null } : s));
+    };
+
+    const handleGeneratePrompts = async () => {
+        for (const builder of promptBuilders) {
+            if (builder.categoryLeft === 'None' && builder.categoryRight === 'None' && !builder.topic.trim()) {
+                setGlobalMessage({ title: "Perhatian", type: "warning", text: "Topik WAJIB diisi jika kedua kategori None!" });
+                return;
+            }
+        }
+        setIsGeneratingPrompts(true);
+        try {
+            let newBlueprints = [...blueprints];
+            for (const builder of promptBuilders) {
+                const totalAmount = parseInt(builder.amount) || 1;
+                const batchSize = 5;
+                let remaining = totalAmount;
+
+                while (remaining > 0) {
+                    const currentAmount = Math.min(remaining, batchSize);
+                    let systemPrompt = "";
+                    const randomSeed = Math.floor(Math.random() * 1000000);
+                    const exclusionRule = newBlueprints.length > 0 ? `\n\nCRITICAL RULE: DO NOT repeat concepts. Make these entirely NEW and DIFFERENT.` : "";
+                    const baseInstruction = `Buatkan TEPAT ${currentAmount} prompt instruksi animasi. Topik: "${builder.topic || 'Random'}". Durasi target: ${builder.duration} detik. WAJIB tuliskan instruksi dan warna dalam Bahasa Indonesia.
+FOKUS UTAMA: Output HARUS dalam format JSON murni dengan struktur array "blueprints". Jangan berikan deskripsi nilai jual. Susun secara vertikal:
+{ "blueprints": [ { "topic": "Topik Singkat", "visual": "Ringkasan Visual", "scene": "0-3s: aksi, 3-7s: aksi...", "colors": "Warna utama...", "background": "Latar belakang..." } ] }`;
+                    const activeCategory = builder.categoryRight !== 'None' ? builder.categoryRight : builder.categoryLeft;
+
+                    if (activeCategory === 'None') systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}`;
+                    else if (activeCategory === "Skeleton UI Mockup") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Skeleton UI Mockup / Abstract UI Illustration. Berikan skema warna modern.`;
+                    else if (activeCategory === "Diagram UI") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: 2D flat vector diagram UI illustration. Workflow dengan dashed lines.`;
+                    else if (activeCategory === "Flat Vektor Line Art") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Minimalist flat vector line art. Stroke putih di background hitam pekat.`;
+                    else if (activeCategory === "Filled Outline Vektor") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Filled outline vector. Outline tebal gelap, warna pastel. 2D flat design.`;
+                    else if (activeCategory === "Line Drawing") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Minimalist continuous line drawing. Stroke putih menggambar diri, lalu mundur menghapus. Background hitam pekat. Tanpa fill.`;
+                    else if (activeCategory === "Animasi Vektor Berantai") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Sequential Vector Animation (2D Flat). WAJIB bagi struktur scene menjadi 3 babak berurutan (Phase 1, Phase 2, Phase 3).`;
+                    else if (activeCategory === "Text Animation") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Kinetic Typography / Text Animation Bundle. Jika topik kosong, pilih frasa acak. Layar wajib kosong saat pergantian teks.`;
+                    else if (activeCategory === "Template Presentasi") systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL: Revolutionary Abstract Presentation Slide. ZERO TEXT. Jelaskan placeholder teks dengan bentuk struktural. Gerakan masuk berantai (staggered delay).`;
+                    else systemPrompt = `[SEED: ${randomSeed}] ${baseInstruction}\nGAYA VISUAL (MUTLAK): ${activeCategory}. Sesuaikan seluruh instruksi, warna, dan pergerakan agar mencerminkan gaya ini dengan kuat.`;
+
+                    systemPrompt += exclusionRule;
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                    const payload = { contents: [{ parts: [{ text: systemPrompt }] }], generationConfig: { responseMimeType: "application/json", temperature: 0.9 } };
+                    const res = await fetchOnce(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const text = res.candidates[0].content.parts[0].text;
+                    const parsed = JSON.parse(text);
+                    
+                    if (parsed.blueprints) {
+                        const cardsWithData = parsed.blueprints.map(bp => ({ ...bp, id: Date.now() + R().toString(36).substr(2, 5), duration: builder.duration }));
+                        newBlueprints = [...newBlueprints, ...cardsWithData];
+                        setBlueprints(newBlueprints);
+                    }
+                    remaining -= currentAmount;
+                }
+            }
+        } catch (err) { 
+            setGlobalMessage({ title: "Error Sistem", type: "error", text: "Gagal meracik blueprint: " + err.message });
+        } finally { setIsGeneratingPrompts(false); }
+    };
+
+    // --- UPLOAD FILE & RENDER ---
+    const handleMediaUpload = async (e) => {
+        let files = [];
+        if (e.target.files && e.target.files.length > 0) files = Array.from(e.target.files);
+        else if (e.dataTransfer && e.dataTransfer.files.length > 0) files = Array.from(e.dataTransfer.files);
+        if (files.length === 0) return;
+
+        const newFilesData = [];
+        for (const file of files) {
+            const base64 = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => resolve(event.target.result);
+                reader.readAsDataURL(file);
+            });
+            newFilesData.push({ id: Date.now() + Math.random(), name: file.name, type: file.type, base64, url: URL.createObjectURL(file) });
+        }
+        setUploadedFilesData(prev => [...prev, ...newFilesData]);
+        if (e.target) e.target.value = '';
+    };
+
+    const handleRenderUpload = async (e) => {
+        let files = [];
+        if (e.target.files && e.target.files.length > 0) files = Array.from(e.target.files);
+        else if (e.dataTransfer && e.dataTransfer.files.length > 0) files = Array.from(e.dataTransfer.files);
+        const txtFiles = files.filter(f => f.type === 'text/plain' || f.name.endsWith('.txt'));
+        if (txtFiles.length === 0) return;
+
+        const newFiles = await Promise.all(txtFiles.map(async (file) => {
+            let content = await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => resolve(event.target.result);
+                reader.readAsText(file);
+            });
+
+            // Ekstrak Metadata Presisi
+            let width = 1920, height = 1080, dur = 10, ratioStr = '16:9';
+            const metaMatch = content.match(/\/\/\s*\[META\]\s*RES:(\d+x\d+)\s*DUR:(\d+)/i);
+            if (metaMatch) {
+                const resParts = metaMatch[1].toLowerCase().split('x');
+                width = parseInt(resParts[0]); height = parseInt(resParts[1]); dur = parseInt(metaMatch[2]);
+            } else {
+                const vbMatch = content.match(/viewBox["']?\s*,\s*["']0\s+0\s+(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)["']/i);
+                if(vbMatch) { width = parseFloat(vbMatch[1]); height = parseFloat(vbMatch[2]); }
+                const durMatch = content.match(/duration\s*=\s*(\d+(?:\.\d+)?)/i);
+                if(durMatch) dur = parseFloat(durMatch[1]);
+            }
+
+            let aspect = width / height;
+            if (aspect > 1.3) ratioStr = '16:9'; else if (aspect < 0.75) ratioStr = '9:16'; else ratioStr = '1:1';
+            const finalResString = `${width}x${height}`;
+            const jsMatch = content.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+            if (jsMatch) content = jsMatch[1].trim();
+
+            return { id: Date.now() + Math.random(), name: file.name, content, resolution: finalResString, ratio: ratioStr, duration: dur };
+        }));
+
+        setUploadedRenderFiles(prev => [...prev, ...newFiles]);
+        if (e.target) e.target.value = '';
+    };
+
+    const handleDragOver = (e) => { e.preventDefault(); };
+    const handleDropFile = (e) => { e.preventDefault(); handleMediaUpload(e); };
+    const handleDropRender = (e) => { e.preventDefault(); handleRenderUpload(e); };
+
+    // --- GENERATION CALLS (AI & HF) ---
+    const callAI = async (task, signal) => {
+        let finalPrompt = "";
+        let finalNegative = negativePrompt.trim();
+
+        if (task.mode === 'text') finalPrompt = `Konsep Utama: ${task.basePrompt.topic}\nRingkasan: ${task.basePrompt.visual}\nStruktur Scene: ${task.basePrompt.scene}\nWarna: ${task.basePrompt.colors}\nBackground: ${task.basePrompt.background}`;
+        else finalPrompt = task.basePrompt; 
+
+        if (instructions.trim()) finalPrompt = `${instructions}. ${finalPrompt}`;
+        if (finalNegative) finalPrompt += `. DILARANG mengandung: ${finalNegative}`;
+
+        const isLineDrawing = finalPrompt.toLowerCase().includes("line drawing") || finalPrompt.toLowerCase().includes("line-drawing");
+        const isSequential = finalPrompt.toLowerCase().includes("sequential") || finalPrompt.toLowerCase().includes("phase 1");
+        
+        let dynamicSystemLayer3 = SYSTEM_LAYER_3;
+        if (task.media) dynamicSystemLayer3 += `\n- ATURAN TRACING GAMBAR (MUTLAK): JIPLAK gambar referensi jadi elemen SVG murni menggunakan JS create(). ANIMASIKAN hasil jiplakan tersebut di update() menjadi motion graphic.`;
+        if (isLineDrawing) dynamicSystemLayer3 += `\n- Aturan Line Drawing: Gunakan pathLength="100" dan animasikan atribut stroke-dashoffset di fungsi update. DILARANG fill warna.`;
+        if (isSequential) dynamicSystemLayer3 += `\n- Aturan Berantai: Gunakan matematika percabangan pada waktu \`t\` untuk membagi gerakan elemen (misal: if t < 3 { animasi A } else { animasi B }). Gerakan tidak serentak.`;
+
+        const systemInstruction = `Anda adalah Arsitek Motion JS tingkat dewa. Tugas Anda adalah membuat kode JavaScript murni sesuai permintaan.\n\n${SYSTEM_LAYER_1}\n\n${SYSTEM_LAYER_2}\n\n${dynamicSystemLayer3}`;
+
+        const parts = [];
+        parts.push({ text: `Buat animasi ini HANYA dengan kode JS murni (DURASI SIKLUS MUTLAK HARUS ${task.duration} DETIK. JANGAN GUNAKAN 10 DETIK JIKA SAYA MINTA ${task.duration} DETIK! Rancang desain viewBox proporsional untuk rasio ${task.ratio || '16:9'} dengan resolusi tepat ${task.resolution.toLowerCase()}): ${finalPrompt}` });
+
+        if (task.media && task.media.base64) {
+            const base64Data = task.media.base64.split(',')[1];
+            parts.push({ inlineData: { data: base64Data, mimeType: task.media.type } });
+        }
+
+        const payload = { contents: [{ parts: parts }], systemInstruction: { parts: [{ text: systemInstruction }] } };
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+        const result = await fetchOnce(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, signal);
+        
+        let resultText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!resultText) throw new Error("Gagal mengambil kode dari API.");
+        
+        let cleanCode = resultText.trim();
+        const codeMatch = resultText.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+        if (codeMatch) cleanCode = codeMatch[1].trim();
+        
+        if (!cleanCode.includes('function create') || !cleanCode.includes('function update')) throw new Error("AI tidak mengembalikan struktur fungsi create dan update yang valid.");
+        return cleanCode;
+    };
+
+    const handleReviseCode = async () => {
+        if (!editChatInput.trim() || !editCode) return;
+        setIsRevising(true);
+        try {
+            const systemInstruction = `Anda adalah Arsitek Motion JS tingkat dewa. Modifikasi kode JavaScript ini persis sesuai instruksi user.\n\n${SYSTEM_LAYER_1}\n\nPertahankan durasi infinite loop t = time % DURATION kecuali diminta diubah.`;
+            const payload = { contents: [{ parts: [{ text: `Berikut adalah kodenya:\n\n${editCode}\n\nInstruksi perbaikan: ${editChatInput}` }]}], systemInstruction: { parts: [{ text: systemInstruction }] } };
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const result = await fetchOnce(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            
+            let resultText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!resultText) throw new Error("Gagal mengambil revisi kode dari API.");
+            
+            let cleanCode = resultText.trim();
+            const codeMatch = resultText.match(/```(?:javascript|js)?\s*([\s\S]*?)```/i);
+            if (codeMatch) cleanCode = codeMatch[1].trim();
+            
+            setEditCode(cleanCode); setEditChatInput('');
+            const newHistory = [...editHistory.slice(0, editHistoryIndex + 1), cleanCode];
+            setEditHistory(newHistory); setEditHistoryIndex(newHistory.length - 1);
+        } catch (err) { setGlobalMessage({ title: "Error Revisi", type: "error", text: "Gagal revisi: " + err.message }); } finally { setIsRevising(false); }
+    };
+
+    const startGeneration = async (isResume = false) => {
+        if (isGeneratingRef.current) return;
+        let newTasks = [];
+        if (!isResume) {
+            if (inputMode === 'text') {
+                if (blueprints.length === 0) return;
+                const qty = parseInt(blueprintQuantity) || 1;
+                blueprints.forEach(bp => {
+                    for(let i=0; i<qty; i++) {
+                        newTasks.push({ id: R().toString(36).substr(2, 9), title: bp.topic || 'Menunggu...', basePrompt: bp, code: '', status: 'pending', error: null, ratio: selectedRatio, resolution: DIMENSIONS[selectedRatio][selectedResolution].toLowerCase(), duration: bp.duration || selectedDuration, mode: 'text' });
+                    }
+                });
+            } else if (inputMode === 'file') {
+                if (uploadedFilesData.length === 0) return;
+                const qty = parseInt(fileQuantity) || 1;
+                uploadedFilesData.forEach((file) => {
+                    for(let i = 0; i < qty; i++) {
+                        newTasks.push({ id: R().toString(36).substr(2, 9), title: `Trace: ${file.name.substring(0,12)}... (${i+1})`, basePrompt: 'Jiplay, rekonstruksi, dan animasikan gambar referensi ini secara presisi tanpa bantuan teks.', code: '', status: 'pending', error: null, ratio: selectedRatio, resolution: DIMENSIONS[selectedRatio][selectedResolution].toLowerCase(), duration: selectedDuration, media: file, mode: 'file' });
+                    }
+                });
+            } 
+            const updatedOldCards = cardsRef.current.map(f => f.status === 'failed' && f.mode !== 'render' ? { ...f, status: 'pending', error: null } : f);
+            const nextCards = [...newTasks, ...updatedOldCards];
+            setCards(nextCards); cardsRef.current = nextCards; setCurrentPage(1); 
+        }
+
+        isGeneratingRef.current = true; setIsGenerating(true); setIsPaused(false); isPausedRef.current = false;
+        setActiveProcessGroup('generate');
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+        
+        const runWorkers = async () => {
+            const requestedWorkers = parseInt(workerCount) || 3;
+            const filesToProcess = cardsRef.current.filter(f => f.status === 'pending' && f.mode !== 'render').length;
+            const concurrency = Math.max(1, Math.min(requestedWorkers, filesToProcess));
+            const delayMs = (parseInt(workerDelay) || 0) * 1000;
+            const workers = [];
+
+            for (let workerId = 0; workerId < concurrency; workerId++) {
+                workers.push((async () => {
+                    if (workerId > 0 && delayMs > 0 && !isPausedRef.current) await new Promise(r => setTimeout(r, delayMs * workerId));
+                    while (!isPausedRef.current) {
+                        let taskToProcess = null;
+                        for (let j = 0; j < cardsRef.current.length; j++) {
+                            if (cardsRef.current[j].status === 'pending' && cardsRef.current[j].mode !== 'render') {
+                                taskToProcess = cardsRef.current[j];
+                                cardsRef.current[j] = { ...taskToProcess, status: 'processing', error: null };
+                                break; 
+                            }
+                        }
+                        if (!taskToProcess) break; 
+                        
+                        setCards(prev => prev.map(f => f.id === taskToProcess.id ? { ...f, status: 'processing', error: null } : f));
+                        try {
+                            const generatedCode = await callAI(taskToProcess, signal);
+                            const finalCodeWithMeta = `// [META] RES:${taskToProcess.resolution} DUR:${taskToProcess.duration}\n${generatedCode}`;
+                            setCards(prev => prev.map(f => f.id === taskToProcess.id ? { ...f, status: 'done', code: finalCodeWithMeta } : f));
+                        } catch (error) {
+                            if (error.name === 'AbortError') setCards(prev => prev.map(f => f.id === taskToProcess.id ? { ...f, status: 'pending' } : f));
+                            else setCards(prev => prev.map(f => f.id === taskToProcess.id ? { ...f, status: 'failed', error: error.message } : f));
+                        }
+                        if (delayMs > 0 && !isPausedRef.current) await new Promise(r => setTimeout(r, delayMs));
+                    }
+                })());
+            }
+            await Promise.all(workers);
+        };
+
+        while (!isPausedRef.current) {
+            await runWorkers();
+            await new Promise(r => {
+                const check = setInterval(() => {
+                    if (!cardsRef.current.some(f => f.status === 'processing') || cardsRef.current.some(f => f.status === 'pending' && f.mode !== 'render')) { clearInterval(check); r(); } 
+                }, 500);
+            });
+            if (!cardsRef.current.some(f => f.status === 'pending' && f.mode !== 'render')) break; 
+        }
+        
+        if (!isPausedRef.current) { setIsGenerating(false); isGeneratingRef.current = false; setActiveProcessGroup(null); }
+    };
+
+    const startRenderAction = async (isResume = false) => {
+        if (isGeneratingRef.current) return;
+        if (HUGGING_FACE_URLS.length === 0 || HUGGING_FACE_URLS[0] === "URL_HUGGING_FACE_ANDA_DISINI") {
+             setGlobalMessage({ title: "URL Belum Disetting", type: "error", text: "Silakan masukkan URL Hugging Face di dalam kode App.jsx." });
+             return;
+        }
+
+        if (!isResume) {
+            if (uploadedRenderFiles.length === 0) return;
+            const qty = parseInt(renderQuantity) || 1;
+            let newTasks = [];
+            uploadedRenderFiles.forEach(file => {
+                for(let i=0; i<qty; i++) {
+                    newTasks.push({ id: Math.random().toString(36).substr(2, 9), title: `${file.name.replace('.txt', '')} (${i+1})`, code: file.content, status: 'pending', error: null, ratio: file.ratio, resolution: file.resolution, duration: file.duration, mode: 'render', outputUrl: null });
+                }
+            });
+            const updatedOldCards = cardsRef.current.map(f => f.status === 'failed' && f.mode === 'render' ? { ...f, status: 'pending', error: null, outputUrl: null } : f);
+            const nextCards = [...newTasks, ...updatedOldCards];
+            setCards(nextCards); cardsRef.current = nextCards; setCurrentPage(1); 
+        }
+
+        isGeneratingRef.current = true; setIsGenerating(true); setIsPaused(false); isPausedRef.current = false;
+        setActiveProcessGroup('render');
+        
+        try {
+            while (!isPausedRef.current) {
+                let task = null;
+                for (let j = 0; j < cardsRef.current.length; j++) {
+                    if ((cardsRef.current[j].status === 'pending' || (isResume && cardsRef.current[j].status === 'processing')) && cardsRef.current[j].mode === 'render') {
+                        task = cardsRef.current[j];
+                        cardsRef.current[j] = { ...task, status: 'processing' };
+                        break; 
+                    }
+                }
+                if (!task) break; 
+                
+                setCards(prev => prev.map(f => f.id === task.id ? { ...f, status: 'processing' } : f));
+                try {
+                    const targetUrl = HUGGING_FACE_URLS[Math.floor(Math.random() * HUGGING_FACE_URLS.length)];
+                    const randomHFId = generateRandomTaskID();
+                    const response = await fetch(`${targetUrl.replace(/\/$/, '')}/api/predict`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ data: [task.code, task.resolution.toLowerCase(), task.duration, renderFps, randomHFId, renderBitrate] })
+                    });
+                    
+                    if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+                    const resData = await response.json();
+                    let base64String = null;
+                    if (resData && resData.data && resData.data[0]) base64String = resData.data[0];
+
+                    if (!isPausedRef.current) {
+                        if (base64String) {
+                            const b64Data = base64String.replace(/^data:video\/mp4;base64,/, '');
+                            const vidResponse = await fetch(`data:video/mp4;base64,${b64Data}`);
+                            const videoBlob = await vidResponse.blob();
+                            const localBlobUrl = URL.createObjectURL(videoBlob);
+                            setCards(prev => prev.map(c => c.id === task.id ? { ...c, status: 'done', outputUrl: localBlobUrl } : c));
+                        } else { throw new Error("Format balasan dari server HF kosong atau tidak sesuai harapan."); }
+                    } else { setCards(prev => prev.map(c => c.id === task.id ? { ...c, status: 'pending' } : c)); }
+                } catch (error) { setCards(prev => prev.map(f => f.id === task.id ? { ...f, status: 'failed', error: "Gagal memproses video." } : f)); }
+            }
+        } catch (globalErr) { setGlobalMessage({ title: "Error Modul", type: "error", text: "Koneksi ke server HF gagal. Pastikan HF 'Running'." }); }
+        
+        if (!isPausedRef.current) { setIsGenerating(false); isGeneratingRef.current = false; setActiveProcessGroup(null); }
+    };
+
+    const handleStartAction = (isResume = false) => {
+        if (inputMode === 'render') startRenderAction(isResume); else startGeneration(isResume);
+    };
+
+    const handlePauseResume = () => {
+        if ((isGenerating || countProcessing > 0) && !isPaused) { 
+            setIsPaused(true); isPausedRef.current = true; setIsGenerating(false); isGeneratingRef.current = false;
+            setCards(prev => prev.map(c => c.status === 'processing' ? { ...c, status: 'pending' } : c));
+        } else if (isPaused || (!isGenerating && countPending > 0)) { handleStartAction(true); }
+    };
+
+    const confirmClearAllAction = () => {
+        setIsPaused(false); isPausedRef.current = false; setIsGenerating(false); isGeneratingRef.current = false;
+        setActiveProcessGroup(null);
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        setCards(prev => prev.filter(c => inputMode === 'render' ? c.mode !== 'render' : c.mode === 'render')); 
+        setClearAllConfirm(false); setCurrentPage(1); 
+    };
+
+    const handleDownloadZip = async () => {
+        const doneCards = activeCards.filter(f => f.status === 'done');
+        if (doneCards.length === 0) return;
+        setIsZipping(true);
+        try {
+            const JSZip = (await import('https://esm.sh/jszip')).default;
+            const zip = new JSZip();
+            for (let i = 0; i < doneCards.length; i++) {
+                const card = doneCards[i];
+                if (card.mode === 'render' && card.outputUrl) {
+                    const response = await fetch(card.outputUrl);
+                    const blobData = await response.blob();
+                    zip.file(`${card.title || `amati_video_${card.id}`}.mp4`, blobData);
+                } else if (card.code) {
+                    zip.file(`${card.title || `amati_motion_${card.id}`}.txt`, card.code);
+                }
+            }
+            const content = await zip.generateAsync({ type: 'blob' });
+            const zipUrl = URL.createObjectURL(content);
+            const link = document.createElement('a');
+            const defaultName = inputMode === 'render' ? 'AMATI-Motion-Video' : 'AMATI-Motion-Kode';
+            link.href = zipUrl; link.download = `${zipFilename.trim() || defaultName}.zip`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(zipUrl);
+        } catch (err) { setGlobalMessage({ title: "Error Sistem", type: "error", text: "Gagal mengemas file ZIP." }); } finally { setIsZipping(false); }
+    };
+
+    const handleDownloadSingleMP4 = (cardData) => {
+        if(!cardData.outputUrl) return;
+        const link = document.createElement('a');
+        link.href = cardData.outputUrl; link.download = `${cardData.title || `amati_render_${cardData.id}`}.mp4`; 
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleEditCodeChange = (e) => {
+        const newCode = e.target.value;
+        setEditCode(newCode);
+        const newHistory = [...editHistory.slice(0, editHistoryIndex + 1)];
+        newHistory[editHistoryIndex] = newCode;
+        setEditHistory(newHistory);
+    };
+
+    const handleCopyText = (text) => {
+        if (!text) return;
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try { document.execCommand('copy'); } catch (err) {}
+        document.body.removeChild(textArea);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+    };
+
+    const totalPages = Math.ceil(activeCards.length / itemsPerPage);
+    const paginatedCards = activeCards.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    return (
+        <>
+            <style>{`
+                body { font-family: 'Share Tech', sans-serif; overscroll-behavior: contain; margin: 0; padding: 0; background: #f1f5f9; }
+                .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+                .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+                .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+                .custom-scroll::-webkit-scrollbar-thumb:hover { background: #0891B3; }
+                .dot-anim::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+                @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } 100% { content: ''; } }
+            `}</style>
+            
+            {/* KERANGKA UTAMA YANG DIPERBAIKI: Mengikuti amati_tsx_2.tsx sepenuhnya */}
+            <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-slate-100 text-slate-900 flex flex-col">
+                <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-30 shadow-md h-14 flex items-center shrink-0">
+                    <div className="w-full px-4 sm:px-6 flex justify-between items-center">
+                        <div className="text-[28px] leading-none font-bold text-[#0891B3] tracking-widest flex items-center gap-2">AMATI</div>
+                        <div className="text-right flex flex-col justify-center items-end text-slate-100">
+                            <div className="text-[16px] leading-none font-bold tracking-[0.1em]">{timeString}</div>
+                            <div className="text-[11px] leading-tight text-slate-400 tracking-wider mt-0.5">{dateString}</div>
+                        </div>
+                    </div>
+                </header>
+
+                <main className="w-full flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative min-h-0 bg-slate-100">
+                    <aside className="w-full lg:w-[380px] bg-slate-50 lg:border-r border-slate-200 flex flex-col z-20 shrink-0 lg:h-full lg:overflow-hidden">
+                        
+                        <div className="flex-1 flex flex-col overflow-y-visible lg:overflow-y-auto overflow-x-hidden custom-scroll">
+                            <div className="p-4 flex flex-col gap-4">
+                                
+                                <div className="flex gap-2 w-full">
+                                    <a href="https://lynk.id/isaproject" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold py-3 rounded-lg transition shadow-sm text-[11px] tracking-wide hover:-translate-y-0.5 duration-200">
+                                        <BriefcaseIcon /> My Project
+                                    </a>
+                                    <a href="https://lynk.id/isaproject/0581ez0729vx" target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 bg-[#0891B3] hover:bg-[#06738F] text-white font-semibold py-3 rounded-lg transition shadow-sm text-[11px] tracking-wide hover:-translate-y-0.5 duration-200">
+                                        <CoffeeIcon /> Support
+                                    </a>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-lg shadow-sm border border-[#0891B3]/30 flex flex-col text-left">
+                                    
+                                    <div className="flex items-center gap-2 mb-3 pb-1.5 border-b border-[#0891B3]/20">
+                                        <h2 className="text-[14px] font-bold text-slate-700 uppercase tracking-wide">Pengaturan</h2>
+                                    </div>
+
+                                    {/* TABS SWITCHER */}
+                                    <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-full h-[44px] shrink-0 border border-slate-200 mb-4">
+                                        <button onClick={() => setInputMode('text')} disabled={isGenerating && !isPaused} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${inputMode === 'text' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'} ${(isGenerating && !isPaused) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                                            <TypeIcon className={`w-3.5 h-3.5 ${inputMode === 'text' ? 'text-[#0891B3]' : 'text-slate-400'}`} /> <span>Text</span>
+                                        </button>
+                                        <button onClick={() => setInputMode('file')} disabled={isGenerating && !isPaused} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${inputMode === 'file' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'} ${(isGenerating && !isPaused) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                                            <FileIcon className={`w-3.5 h-3.5 ${inputMode === 'file' ? 'text-[#0891B3]' : 'text-slate-400'}`} /> <span>File</span>
+                                        </button>
+                                        <button onClick={() => setInputMode('render')} disabled={isGenerating && !isPaused} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${inputMode === 'render' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'} ${(isGenerating && !isPaused) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                                            <PlayIcon className={`w-3.5 h-3.5 ${inputMode === 'render' ? 'text-[#0891B3]' : 'text-slate-400'}`} /> <span>Render</span>
+                                        </button>
+                                    </div>
+
+                                    {/* TAB: TEKS (BLUEPRINT BUILDER) */}
+                                    {inputMode === 'text' && (
+                                        <>
+                                            <div className="mb-4">
+                                                <button onClick={() => setIsBuilderOpen(!isBuilderOpen)} className="w-full flex items-center justify-between p-2.5 bg-slate-50 hover:bg-[#0891B3]/10 border border-slate-200 hover:border-[#0891B3]/30 text-slate-700 hover:text-[#0891B3] rounded transition-colors">
+                                                    <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5"><SparklesIcon className="w-3 h-3" /> Buat Ide & Blueprint AI Otomatis</span>
+                                                    <ChevronDownIcon className={`w-4 h-4 transition-transform duration-300 ${isBuilderOpen ? 'rotate-180' : ''}`} />
+                                                </button>
+                                                
+                                                {isBuilderOpen && (
+                                                    <div className="mt-2 flex flex-col gap-2">
+                                                        <div className="bg-slate-50 border border-slate-200 rounded p-3 flex flex-col gap-2 shadow-sm">
+                                                            <div className="flex gap-2">
+                                                                <div className="flex-1">
+                                                                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 uppercase">Ketik Tema/Keyword</label>
+                                                                    <input type="text" value={magicKeyword} onChange={e => setMagicKeyword(e.target.value)} placeholder="e.g. Finance..." className={`${inputClass} !h-[28px]`} />
+                                                                </div>
+                                                                <div className="w-20 shrink-0">
+                                                                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5 uppercase">Jml Ide</label>
+                                                                    <input type="number" min="1" value={magicCount} onChange={e => setMagicCount(e.target.value)} className={`${inputClass} !h-[28px]`} />
+                                                                </div>
+                                                            </div>
+                                                            <button onClick={handleGenerateIdeas} disabled={isGeneratingIdeas} className="py-2 bg-[#0891B3] hover:bg-[#06738F] text-white text-[11px] font-bold uppercase tracking-wider rounded flex items-center justify-center gap-2 transition-colors disabled:opacity-70 shadow-sm mt-1">
+                                                                {isGeneratingIdeas ? <><CustomSpinner className="h-3.5 w-3.5 text-white" /> Memikirkan Ide...</> : <><SparklesIcon className="w-3 h-3" /> Buat Ide</>}
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="flex flex-col border border-slate-200 rounded bg-white shadow-sm overflow-hidden">
+                                                            <div className="h-[120px] p-2 overflow-y-auto custom-scroll border-b border-slate-200 bg-slate-50">
+                                                                {magicSuggestions.length > 0 ? (
+                                                                    <div className="flex flex-col gap-1.5">
+                                                                        {magicSuggestions.map((idea, idx) => (
+                                                                            <div key={idx} className="flex justify-between items-center bg-white p-2 rounded border border-slate-200 gap-2">
+                                                                                <div className="flex flex-col min-w-0 flex-1">
+                                                                                    <span className="text-[10px] text-slate-800 font-medium leading-tight truncate" title={idea.text}>{idea.text}</span>
+                                                                                    <span className="text-[8px] text-[#0891B3] font-bold tracking-wide uppercase truncate mt-0.5">{idea.style}</span>
+                                                                                </div>
+                                                                                <button onClick={() => handleToggleIdea(idx, idea)} className={`w-6 h-6 rounded flex items-center justify-center font-black text-sm shrink-0 transition-colors ${idea.addedId ? 'bg-red-500 text-white hover:bg-red-600 shadow-sm' : 'bg-[#0891B3]/10 text-[#0891B3] hover:bg-[#0891B3]/20 shadow-sm'}`}>
+                                                                                    {idea.addedId ? '-' : '+'}
+                                                                                </button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                                                                        <SparklesIcon className="w-5 h-5 mb-1 opacity-50" />
+                                                                        <span className="text-[10px] font-medium">Ide AI akan muncul di sini...</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="h-[120px] p-2 overflow-y-auto custom-scroll flex flex-col gap-2 bg-white">
+                                                                {promptBuilders.map((builder) => (
+                                                                    <div key={builder.id} className="relative p-2 bg-slate-50 border border-slate-200 rounded shrink-0 flex flex-col gap-1.5">
+                                                                        {promptBuilders.length > 1 && (
+                                                                            <button onClick={() => removeBuilder(builder.id)} className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-0.5 hover:bg-red-200 z-10 shadow-sm"><XCircleIcon className="w-4 h-4" /></button>
+                                                                        )}
+                                                                        <div className="flex gap-2 w-full">
+                                                                            <div className="flex-1">
+                                                                                <label className="block text-[9px] font-bold text-slate-500 mb-0.5 uppercase">Topik / Konsep</label>
+                                                                                <input type="text" value={builder.topic} onChange={e => updateBuilder(builder.id, 'topic', e.target.value)} placeholder="Misal: Roket..." className={`${inputClass} !h-[24px] !text-[10px]`} />
+                                                                            </div>
+                                                                            <div className="w-[45px] shrink-0">
+                                                                             <label className="block text-[9px] font-bold text-slate-500 mb-0.5 uppercase">Dur</label>
+                                                                                <select value={builder.duration} onChange={e => updateBuilder(builder.id, 'duration', parseInt(e.target.value))} className={`${inputClass} !h-[24px] !text-[10px] !px-1`}>
+                                                                                    {DURATIONS.map(d => <option key={d} value={d}>{d}s</option>)}
+                                                                                </select>
+                                                                            </div>
+                                                                            <div className="w-[45px] shrink-0">
+                                                                                <label className="block text-[9px] font-bold text-slate-500 mb-0.5 uppercase">Jml</label>
+                                                                                <input type="number" min="1" max="20" value={builder.amount} onChange={e => updateBuilder(builder.id, 'amount', e.target.value)} className={`${inputClass} !h-[24px] !text-[10px] !px-1`} />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex gap-2 w-full">
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <label className="block text-[9px] font-bold text-slate-500 mb-0.5 uppercase truncate">Kategori (Bawaan)</label>
+                                                                                <select value={builder.categoryLeft} onChange={e => updateBuilder(builder.id, 'categoryLeft', e.target.value)} disabled={builder.categoryRight !== 'None'} className={`${inputClass} !h-[24px] !text-[9px] !px-1 truncate bg-white w-full ${builder.categoryRight !== 'None' ? 'opacity-40' : ''}`}>
+                                                                                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                                                                </select>
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <label className="block text-[9px] font-bold text-slate-500 mb-0.5 uppercase truncate">Kategori (Ide AI)</label>
+                                                                                <select value={builder.categoryRight} onChange={e => updateBuilder(builder.id, 'categoryRight', e.target.value)} disabled={builder.categoryLeft !== 'None'} className={`${inputClass} !h-[24px] !text-[9px] !px-1 truncate bg-amber-50 border-amber-200 text-amber-900 w-full ${builder.categoryLeft !== 'None' ? 'opacity-40' : ''}`}>
+                                                                                    <option value="None">None</option>
+                                                                                    {builder.customStyle && <option value={builder.customStyle}>{builder.customStyle}</option>}
+                                                                                </select>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="bg-slate-50 border border-slate-200 rounded p-3 flex flex-col gap-2 shadow-sm">
+                                                            <button onClick={addBuilder} className="py-1.5 border border-dashed border-slate-300 text-slate-500 bg-white hover:bg-slate-100 hover:text-slate-700 text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors shadow-sm"><PlusIcon /> Tambah Kategori Manual</button>
+                                                            <button onClick={handleGeneratePrompts} disabled={isGeneratingPrompts} className="py-2 bg-[#0891B3] hover:bg-[#06738F] text-white text-[11px] font-bold uppercase tracking-wider rounded flex items-center justify-center gap-2 transition-colors disabled:opacity-70 shadow-sm mt-1">
+                                                                {isGeneratingPrompts ? <><CustomSpinner className="w-4 h-4 text-white" /> Meracik Blueprint...</> : <><SparklesIcon className="w-3 h-3" /> Buat Blueprint</>}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="mb-4 shrink-0 flex flex-col">
+                                                <div className="flex justify-between items-end mb-1">
+                                                    <label className="block text-[11px] font-bold text-slate-600">Daftar Blueprint Animasi</label>
+                                                </div>
+                                                <div className={`border rounded flex flex-col bg-slate-50 transition-all overflow-hidden relative ${isGenerating && !isPaused ? 'border-gray-200' : 'border-gray-300 focus-within:ring-2 focus-within:ring-[#0891B3] focus-within:border-[#0891B3]'}`}>
+                                                    <div className="w-full h-[150px] p-2 overflow-y-auto custom-scroll bg-white flex flex-col gap-2 disabled:bg-gray-100">
+                                                        {blueprints.length === 0 ? (
+                                                            <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-[10px] font-medium uppercase tracking-widest text-center px-4">Belum ada Blueprint</div>
+                                                        ) : (
+                                                            blueprints.map((bp, idx) => (
+                                                                <div key={bp.id} className="bg-slate-50 border border-slate-200 rounded p-2 relative shadow-sm flex flex-col gap-1 transition-all">
+                                                                    <div className="absolute top-2 right-2 flex gap-1 z-10">
+                                                                        {editingBlueprintId === bp.id ? (
+                                                                            <>
+                                                                                <button onClick={() => setEditingBlueprintId(null)} className="bg-slate-200 text-slate-600 rounded-md px-2 py-0.5 text-[8px] font-bold hover:bg-slate-300 transition-colors">BATAL</button>
+                                                                                <button onClick={() => { setBlueprints(prev => prev.map(b => b.id === bp.id ? { ...b, ...editBpForm } : b)); setEditingBlueprintId(null); }} className="bg-green-500 text-white rounded-md px-2 py-0.5 text-[8px] font-bold hover:bg-green-600 transition-colors">SIMPAN</button>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <button onClick={() => handleCopyText(`Topik: ${bp.topic}\nVisual: ${bp.visual}\nScene: ${bp.scene}\nWarna: ${bp.colors}\nBackground: ${bp.background}`)} disabled={isGenerating && !isPaused} className="bg-slate-100 text-slate-600 rounded-md px-1.5 py-0.5 hover:bg-slate-200 transition-colors disabled:opacity-50" title="Salin Blueprint"><CopyIcon /></button>
+                                                                                <button onClick={() => { setEditingBlueprintId(bp.id); setEditBpForm(bp); }} disabled={isGenerating && !isPaused} className="bg-[#0891B3]/10 text-[#0891B3] rounded-md px-1.5 py-0.5 hover:bg-[#0891B3] hover:text-white transition-colors disabled:opacity-50" title="Edit Blueprint"><EditIcon /></button>
+                                                                                <button onClick={() => setBlueprintToDeleteConfirm(bp.id)} disabled={isGenerating && !isPaused} className="bg-red-100 text-red-600 rounded-md px-1.5 py-0.5 hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50" title="Hapus"><TrashIcon /></button>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                    <h4 className="text-[10px] font-bold text-[#0891B3] truncate pr-20"><span className="uppercase">{idx + 1}. {bp.topic}</span> <span className="text-slate-400 normal-case">({bp.duration}s)</span></h4>
+                                                                    {editingBlueprintId === bp.id ? (
+                                                                        <div className="flex flex-col gap-1.5 mt-1">
+                                                                            <input type="text" value={editBpForm.topic} onChange={e => setEditBpForm({...editBpForm, topic: e.target.value})} className="w-full text-[9px] p-1 border rounded bg-white" placeholder="Topik" />
+                                                                            <textarea value={editBpForm.visual} onChange={e => setEditBpForm({...editBpForm, visual: e.target.value})} className="w-full text-[9px] p-1 border rounded bg-white h-10 resize-none custom-scroll" placeholder="Ringkasan Visual" />
+                                                                            <textarea value={editBpForm.scene} onChange={e => setEditBpForm({...editBpForm, scene: e.target.value})} className="w-full text-[9px] p-1 border rounded bg-white h-10 resize-none custom-scroll" placeholder="Struktur Scene" />
+                                                                            <input type="text" value={editBpForm.colors} onChange={e => setEditBpForm({...editBpForm, colors: e.target.value})} className="w-full text-[9px] p-1 border rounded bg-white" placeholder="Warna Utama" />
+                                                                            <input type="text" value={editBpForm.background} onChange={e => setEditBpForm({...editBpForm, background: e.target.value})} className="w-full text-[9px] p-1 border rounded bg-white" placeholder="Background" />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="text-[9px] text-slate-700 leading-tight"><span className="font-bold text-slate-500 block">Visual:</span> {bp.visual}</div>
+                                                                            <div className="text-[9px] text-slate-700 leading-tight"><span className="font-bold text-slate-500 block">Scene:</span> {bp.scene}</div>
+                                                                            <div className="text-[9px] text-slate-700 leading-tight"><span className="font-bold text-slate-500 block">Warna:</span> {bp.colors}</div>
+                                                                            <div className="text-[9px] text-slate-700 leading-tight"><span className="font-bold text-slate-500 block">Background:</span> {bp.background}</div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                    <div className="flex justify-between items-center border-t border-gray-200 px-2 py-1.5 shrink-0 bg-white z-10">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Qty:</span>
+                                                            <input type="number" min="1" max="100" value={blueprintQuantity} onChange={e => setBlueprintQuantity(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} !h-[22px] !w-12 !px-1 !py-0 !text-center text-[10px] font-bold`} />
+                                                            <span className="text-[10px] font-bold text-slate-400 tracking-widest ml-1 uppercase">TOTAL: {blueprints.length} x {blueprintQuantity || 1} = <span className="text-[#0891B3] ml-1">{blueprints.length * (parseInt(blueprintQuantity) || 1)}</span></span>
+                                                        </div>
+                                                        <button onClick={() => setClearAllBlueprintsConfirm(true)} disabled={(isGenerating && !isPaused) || blueprints.length === 0} className="flex items-center gap-1 text-[10px] font-bold text-red-600 hover:text-red-700 transition disabled:opacity-50"><TrashIcon /> CLEAR</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* TAB: FILE (IMAGE/VIDEO) */}
+                                    {inputMode === 'file' && (
+                                        <div className="mb-4 shrink-0 flex flex-col">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <label className="block text-[11px] font-bold text-slate-600">Daftar File Media (Batch Vektor Tracing)</label>
+                                            </div>
+                                            <input type="file" ref={promptMediaInputRef} multiple accept="image/*,video/*,.svg" onChange={handleMediaUpload} className="hidden" />
+                                            <button onClick={() => promptMediaInputRef.current?.click()} disabled={isGenerating && !isPaused} className="w-full h-10 mb-2 border-2 border-dashed border-[#0891B3]/30 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-2 bg-[#0891B3]/5 text-[#0891B3] hover:bg-[#0891B3]/10 disabled:opacity-50 disabled:cursor-wait shadow-sm">
+                                                <UploadCloudIcon className="w-4 h-4 opacity-80" /> <span>Upload Media File</span>
+                                            </button>
+                                            <div className={`border rounded flex flex-col bg-slate-50 transition-all overflow-hidden relative ${isGenerating && !isPaused ? 'border-gray-200' : 'border-gray-300 focus-within:ring-2 focus-within:ring-[#0891B3] focus-within:border-[#0891B3]'}`} onDragOver={handleDragOver} onDrop={handleDropFile}>
+                                                <div className="w-full h-[150px] p-2 overflow-y-auto custom-scroll bg-white">
+                                                    {uploadedFilesData.length === 0 ? (
+                                                        <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-[10px] font-medium pointer-events-none uppercase tracking-widest text-center px-4">Tarik gambar ke sini (Drag & Drop) untuk dijiplak AI</div>
+                                                    ) : (
+                                                        <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                                                            {uploadedFilesData.map((file) => (
+                                                                <div key={file.id} className="relative aspect-square shrink-0 group">
+                                                                    <div className="w-full h-full bg-slate-100 rounded border border-slate-200 overflow-hidden shadow-sm flex items-center justify-center relative">
+                                                                        {file.type.startsWith('image/') ? <img src={file.url} alt={file.name} className="w-full h-full object-cover" /> : <div className="text-slate-400 text-[8px] font-bold flex flex-col items-center"><FileIcon className="w-4 h-4 mb-0.5" />VID</div>}
+                                                                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[1px]">
+                                                                            <button onClick={() => setFilePreviewModal(file)} disabled={isGenerating && !isPaused} className="text-white hover:text-[#0891B3] transition-colors"><EyeIcon className="w-6 h-6" /></button>
+                                                                        </div>
+                                                                    </div>
+                                                                    <button onClick={() => setFileToDeleteConfirm(file.id)} disabled={isGenerating && !isPaused} className="absolute -top-2 -right-2 w-[22px] h-[22px] bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] shadow-md hover:bg-red-600 hover:scale-110 transition-transform z-10 disabled:opacity-50 border border-white"><XCircleIcon className="w-4 h-4" /></button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex justify-between items-center border-t border-gray-200 px-2 py-1.5 shrink-0 bg-white z-10">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Qty:</span>
+                                                        <input type="number" min="1" max="100" value={fileQuantity} onChange={e => setFileQuantity(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} !h-[22px] !w-12 !px-1 !py-0 !text-center text-[10px] font-bold`} />
+                                                        <span className="text-[10px] font-bold text-slate-400 tracking-widest ml-1 uppercase">TOTAL: {uploadedFilesData.length} x {fileQuantity || 1} = <span className="text-[#0891B3] ml-1">{uploadedFilesData.length * (parseInt(fileQuantity) || 1)}</span></span>
+                                                    </div>
+                                                    <button onClick={() => setClearAllFilesConfirm(true)} disabled={(isGenerating && !isPaused) || uploadedFilesData.length === 0} className="flex items-center gap-1 text-[10px] font-bold text-red-600 hover:text-red-700 transition disabled:opacity-50"><TrashIcon /> CLEAR</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* TAB: RENDER (UPLOAD TXT KHUSUS MP4) */}
+                                    {inputMode === 'render' && (
+                                        <div className="mb-4 shrink-0 flex flex-col">
+                                            <div className="flex justify-between items-end mb-1">
+                                                <label className="block text-[11px] font-bold text-slate-600">Daftar Kode JS (.TXT)</label>
+                                            </div>
+                                            <input type="file" ref={renderMediaInputRef} multiple accept=".txt" onChange={handleRenderUpload} className="hidden" />
+                                            <button onClick={() => renderMediaInputRef.current?.click()} disabled={isGenerating && !isPaused} className="w-full h-10 mb-2 border-2 border-dashed border-[#0891B3]/30 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-colors flex items-center justify-center gap-2 bg-[#0891B3]/5 text-[#0891B3] hover:bg-[#0891B3]/10 disabled:opacity-50 disabled:cursor-wait shadow-sm">
+                                                <UploadCloudIcon className="w-4 h-4 opacity-80" /> <span>Upload File .TXT</span>
+                                            </button>
+                                            <div className={`border rounded flex flex-col bg-slate-50 transition-all overflow-hidden relative ${isGenerating && !isPaused ? 'border-gray-200' : 'border-gray-300 focus-within:ring-2 focus-within:ring-[#0891B3] focus-within:border-[#0891B3]'}`} onDragOver={handleDragOver} onDrop={handleDropRender}>
+                                                <div className="w-full h-[150px] p-2 overflow-y-auto custom-scroll bg-white">
+                                                    {uploadedRenderFiles.length === 0 ? (
+                                                        <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-[10px] font-medium pointer-events-none uppercase tracking-widest text-center px-4">Tarik file .TXT ke sini untuk dirender seketika</div>
+                                                    ) : (
+                                                        <div className="flex flex-col gap-2">
+                                                            {uploadedRenderFiles.map((file) => (
+                                                                <div key={file.id} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded shadow-sm hover:border-[#0891B3]/40 transition-colors group">
+                                                                    <div className="flex flex-col min-w-0 flex-1 pr-2">
+                                                                        <span className="text-[10px] font-bold text-slate-700 truncate">{file.name}</span>
+                                                                        <div className="flex gap-1.5 text-[8px] text-slate-500 font-bold mt-1 uppercase tracking-wide">
+                                                                            <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200">{file.ratio}</span>
+                                                                            <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 lowercase">{file.resolution}</span>
+                                                                            <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[#0891B3] normal-case">{file.duration}s</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex gap-1.5 shrink-0 transition-opacity">
+                                                                        <button onClick={() => setPreviewModal({ mode: 'render', status: 'done', code: file.content, resolution: file.resolution, duration: file.duration })} disabled={isGenerating && !isPaused} className="p-1.5 bg-blue-50 text-blue-600 rounded-md border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors" title="Preview"><EyeIcon className="w-3.5 h-3.5" /></button>
+                                                                        <button onClick={() => setFileToDeleteConfirm(file.id)} disabled={isGenerating && !isPaused} className="p-1.5 bg-red-50 text-red-600 rounded-md border border-red-200 hover:bg-red-600 hover:text-white transition-colors" title="Hapus"><TrashIcon className="w-3.5 h-3.5" /></button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex justify-between items-center border-t border-gray-200 px-2 py-1.5 shrink-0 bg-white z-10">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Qty:</span>
+                                                        <input type="number" min="1" max="100" value={renderQuantity} onChange={e => setRenderQuantity(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} !h-[22px] !w-12 !px-1 !py-0 !text-center text-[10px] font-bold`} />
+                                                        <span className="text-[10px] font-bold text-slate-400 tracking-widest ml-1 uppercase">TOTAL: {uploadedRenderFiles.length} x {renderQuantity || 1} = <span className="text-[#0891B3] ml-1">{uploadedRenderFiles.length * (parseInt(renderQuantity) || 1)}</span></span>
+                                                    </div>
+                                                    <button onClick={() => setClearAllFilesConfirm(true)} disabled={(isGenerating && !isPaused) || uploadedRenderFiles.length === 0} className="flex items-center gap-1 text-[10px] font-bold text-red-600 hover:text-red-700 transition disabled:opacity-50"><TrashIcon /> CLEAR</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* GLOBAL SETTINGS - DYNAMIC BASED ON MODE */}
+                                    {inputMode !== 'render' && (
+                                        <div className="grid grid-cols-2 gap-2 mb-1.5 shrink-0">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-slate-600 mb-0.5">Instruksi Tambahan</label>
+                                                <textarea value={instructions} onChange={e => setInstructions(e.target.value)} disabled={isGenerating && !isPaused} className="w-full text-xs p-2 border border-gray-300 rounded bg-white focus:ring-2 focus:ring-[#0891B3] outline-none h-16 resize-none custom-scroll leading-tight" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-red-600 mb-0.5">Negatif Kode</label>
+                                                <textarea value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)} disabled={isGenerating && !isPaused} className="w-full text-xs p-2 border border-red-200 rounded bg-red-50/50 focus:ring-2 focus:ring-red-500 outline-none h-16 resize-none custom-scroll leading-tight" />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className={`grid grid-cols-6 gap-2 shrink-0 ${inputMode === 'render' ? 'border-t border-slate-200/60 pt-2.5 mt-1' : ''}`}>
+                                        
+                                        {/* TEXT MODE: 50/50 Ratio & Res (No global duration) */}
+                                        {inputMode === 'text' && (
+                                            <>
+                                                <div className="col-span-3">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Rasio</label>
+                                                    <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1 bg-slate-50 border-slate-200 text-slate-700`}>
+                                                        {RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-3">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Resolusi</label>
+                                                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1`}>
+                                                        {RESOLUTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                                    </select>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* FILE MODE: Has Ratio, Res, and global Duration */}
+                                        {inputMode === 'file' && (
+                                            <>
+                                                <div className="col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Rasio</label>
+                                                    <select value={selectedRatio} onChange={(e) => setSelectedRatio(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1 bg-slate-50 border-slate-200 text-slate-700`}>
+                                                        {RATIOS.map(r => <option key={r} value={r}>{r}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Resolusi</label>
+                                                    <select value={selectedResolution} onChange={(e) => setSelectedResolution(e.target.value)} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1`}>
+                                                        {RESOLUTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Durasi</label>
+                                                    <select value={selectedDuration} onChange={(e) => setSelectedDuration(parseInt(e.target.value))} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1`}>
+                                                        {DURATIONS.map(d => <option key={d} value={d}>{d}s</option>)}
+                                                    </select>
+                                                </div>
+                                            </>
+                                        )}
+
+                                        {/* RENDER MODE: Has Bitrate and FPS only */}
+                                        {inputMode === 'render' && (
+                                            <>
+                                                <div className="col-span-3">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">Bitrate Render</label>
+                                                    <select value={renderBitrate} onChange={(e) => setRenderBitrate(parseInt(e.target.value))} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1 bg-slate-50 border-slate-200 text-slate-700`}>
+                                                        {[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(b => <option key={b} value={b}>{b} Mbps</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="col-span-3">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-1">FPS Render</label>
+                                                    <select value={renderFps} onChange={(e) => setRenderFps(parseInt(e.target.value))} disabled={isGenerating && !isPaused} className={`${inputClass} font-bold cursor-pointer disabled:opacity-60 px-1 bg-slate-50 border-slate-200 text-slate-700`}>
+                                                        <option value={30}>30 fps</option><option value={60}>60 fps</option>
+                                                        <option value={90}>90 fps</option><option value={120}>120 fps</option>
+                                                    </select>
+                                                </div>
+                                            </>
+                                        )}
+                                        
+                                        {/* Workers & Delay (Text & File only) */}
+                                        {inputMode !== 'render' && (
+                                            <>
+                                                <div className="col-span-1 mt-1">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Worker</label>
+                                                    <input type="number" min="1" value={workerCount} onChange={e => setWorkerCount(e.target.value)} disabled={isGenerating && !isPaused} className={inputClass} />
+                                                </div>
+                                                <div className="col-span-1 mt-1">
+                                                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Delay</label>
+                                                    <input type="number" min="0" value={workerDelay} onChange={e => setWorkerDelay(e.target.value)} disabled={isGenerating && !isPaused} className={inputClass} />
+                                                </div>
+                                            </>
+                                        )}
+                                        
+                                        {/* Global ZIP Name Box */}
+                                        <div className={`${inputMode === 'render' ? 'col-span-6 mt-2' : 'col-span-4 mt-1'}`}>
+                                            <div className="flex items-center gap-1.5 mb-0.5">
+                                                <FileTextIcon />
+                                                <label className="block text-[10px] font-bold text-slate-600 leading-none">Nama Ekspor ZIP {inputMode === 'render' ? '(.mp4)' : '(.txt)'}</label>
+                                            </div>
+                                            <input type="text" value={zipFilename} onChange={e => setZipFilename(e.target.value)} disabled={isGenerating && !isPaused} placeholder={inputMode === 'render' ? "AMATI-Motion-Video" : "AMATI-Motion-Kode"} className={`${inputClass} placeholder:text-slate-400`} />
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* PANEL BAWAH (STAT & BUTTONS) -> Locked di PC, ikut ke-scroll di HP */}
+                        <div className="shrink-0 p-4 bg-slate-50 border-t border-slate-200 flex flex-col gap-4 z-10">
+                            <div className="bg-white rounded-lg border border-slate-200 shadow-sm transition-all overflow-hidden">
+                                <div className="grid grid-cols-3 gap-0 border-b border-gray-100 p-2 bg-gray-50">
+                                    <div className="flex flex-col items-center justify-center border border-[#0891B3]/20 rounded-lg bg-[#0891B3]/5 py-1.5 shadow-sm transition-all">
+                                        <div className="flex items-center gap-1 mb-1 text-[#0891B3]"><ClockIcon /> <span className="text-xs font-medium uppercase leading-none">Selected</span></div>
+                                        <span className="text-xs font-black text-[#0891B3] tabular-nums">{isGenerating || countPending > 0 ? (countPending + countProcessing) : computedTaskCount}</span>
+                                    </div>
+                                    <div className="mx-1.5 flex flex-col items-center justify-center border border-green-200 rounded-lg bg-green-50 py-1.5 shadow-sm transition-all">
+                                        <div className="flex items-center gap-1 mb-1 text-green-600"><CheckCircleIcon /> <span className="text-xs font-medium uppercase leading-none">Completed</span></div>
+                                        <span className="text-xs font-black text-green-700 tabular-nums">{countSuccess}</span>
+                                    </div>
+                                    <div className="flex flex-col items-center justify-center border border-red-200 rounded-lg bg-red-50 py-1.5 shadow-sm transition-all">
+                                        <div className="flex items-center gap-1 mb-1 text-red-600"><XCircleIcon className="w-3 h-3" /> <span className="text-xs font-medium uppercase leading-none">Failed</span></div>
+                                        <span className="text-xs font-black text-red-700 tabular-nums">{countFailed}</span>
+                                    </div>
+                                </div>
+                                <div className="p-2 bg-white flex items-center justify-between gap-3">
+                                    <button onClick={() => setClearAllConfirm(true)} disabled={(isGenerating && !isPaused) || activeCards.length === 0} className={`flex-1 flex items-center justify-center gap-2 py-1.5 text-xs font-bold uppercase tracking-wide rounded border transition-colors ${activeCards.length > 0 && (!isGenerating || isPaused) ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed opacity-50'}`}>
+                                        <TrashIcon /> CLEAR ALL KARTU
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-1.5 h-10">
+                                {isTabGenerating || isTabPaused || isTabProcessing ? (
+                                    <div className={`flex-1 border text-xs font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm select-none transition-all ${isTabPaused ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-[#0891B3]/10 text-[#0891B3] border-[#0891B3]/30'}`}>
+                                        <SparklesIcon className={`w-4 h-4 ${isTabPaused ? '' : 'animate-spin'} ${isTabPaused ? 'text-amber-600' : 'text-[#0891B3]'}`} />
+                                        <span className="uppercase tracking-wide">{isTabPaused ? 'Terhenti' : 'Memproses...'}</span>
+                                    </div>
+                                ) : (
+                                    <button onClick={() => handleStartAction(false)} disabled={!canGenerate || isProcessMismatch} className={`flex-1 text-xs font-bold rounded-lg border shadow transition-colors flex items-center justify-center gap-2 uppercase tracking-wide truncate ${canGenerate && !isProcessMismatch ? 'bg-[#0891B3] hover:bg-[#06738F] text-white border-[#06738F] hover:-translate-y-0.5' : 'bg-slate-100 border-slate-200 cursor-not-allowed text-slate-400'}`}>
+                                        <Wand2Icon /> {inputMode === 'render' ? 'RENDER' : 'GENERATE'}
+                                    </button>
+                                )}
+                                <button onClick={handlePauseResume} disabled={!canPauseResume || isProcessMismatch} className={`w-10 flex items-center justify-center rounded-lg border shadow-sm transition-all active:scale-95 shrink-0 ${(!canPauseResume || isProcessMismatch) ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : isTabPaused ? 'bg-green-600 border-green-700 text-white hover:bg-green-700 hover:-translate-y-0.5' : 'bg-amber-100 border-amber-300 text-amber-600 hover:bg-amber-200 hover:-translate-y-0.5'}`}>
+                                    {isTabPaused ? <PlayIcon /> : <PauseIcon />}
+                                </button>
+                                <button onClick={handleDownloadZip} disabled={!isZipActive || isZipping || isProcessMismatch} className={`flex-1 text-xs font-bold rounded-lg border shadow transition-colors flex items-center justify-center gap-2 uppercase tracking-wide truncate ${(isZipActive && !isZipping && !isProcessMismatch) ? 'bg-green-600 hover:bg-green-700 text-white border-green-700 hover:-translate-y-0.5' : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-80'}`}>
+                                    {isZipping ? <CustomSpinner className="w-4 h-4 text-white" /> : <DownloadIcon />}
+                                    <span className="truncate">Ekspor ZIP</span>
+                                </button>
+                            </div>
+                        </div>
+                    </aside>
+
+                    {/* AREA KANAN: Kartu dan Pagination */}
+                    <section className="flex-1 flex flex-col lg:overflow-hidden relative min-h-0 bg-slate-100">
+                        
+                        {/* HEADER PAGINATION -> Terkunci di atap */}
+                        <div className="bg-white border-b border-slate-200 p-3 flex justify-between items-center shrink-0 shadow-sm z-10">
+                            <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                {[50, 100, 150, 200, 250].map(num => (
+                                    <button key={num} onClick={() => { setItemsPerPage(num); setCurrentPage(1); }} className={`px-2 py-1 rounded border transition ${itemsPerPage === num ? 'bg-[#0891B3]/10 text-[#0891B3] border-[#0891B3]/20' : 'bg-slate-50 text-slate-500 hover:bg-slate-100 border-slate-200'}`}>
+                                        {num}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold text-slate-500">Hal {currentPage} / {totalPages || 1}</span>
+                                <div className="flex gap-1">
+                                    <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-50 border border-slate-200 transition"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                                    <button disabled={currentPage === totalPages || totalPages === 0} onClick={() => setCurrentPage(p => p + 1)} className="p-1 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-50 border border-slate-200 transition"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* LIST KARTU -> Bisa digulung */}
+                        <div className="flex-1 p-4 lg:overflow-y-auto custom-scroll pb-20 lg:pb-4">
+                            {activeCards.length > 0 ? (
+                                <div className="grid gap-4 items-start" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+                                    {paginatedCards.map(f => {
+                                        return (
+                                        <div key={f.id} className={`bg-white hover:shadow-md rounded-lg shadow-sm border flex flex-col transition-all duration-300 ${f.status === 'processing' ? 'border-[#0891B3] ring-2 ring-[#0891B3]/20' : f.status === 'failed' ? 'border-red-300' : 'border-slate-200'}`}>
+                                            
+                                            <div className="grid grid-cols-4 gap-2 p-2 bg-[#0891B3]/5 border-b border-[#0891B3]/10 rounded-t-lg shrink-0">
+                                                
+                                                <button onClick={() => { setPreviewModal(f); setPreviewTab('motion'); }} disabled={f.mode !== 'render' && f.status !== 'done'} className="flex flex-row items-center justify-center gap-1.5 py-1.5 rounded border bg-white border-[#0891B3]/20 text-[#0891B3] hover:bg-[#0891B3]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                                    <EyeIcon /> <span className="text-[10px] font-bold uppercase tracking-tight truncate">Prev</span>
+                                                </button>
+                                                
+                                                <button onClick={() => handleCopyText(f.code)} disabled={!f.code} className="flex flex-row items-center justify-center gap-1.5 py-1.5 rounded border bg-white border-[#0891B3]/20 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                                    <CopyIcon /> <span className="text-[10px] font-bold uppercase tracking-tight truncate">Copy</span>
+                                                </button>
+
+                                                {/* Edit vs Download sesuai Mode */}
+                                                {f.mode === 'render' ? (
+                                                    <button onClick={() => handleDownloadSingleMP4(f)} disabled={f.status !== 'done'} className="flex flex-row items-center justify-center gap-1.5 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-50 text-emerald-600 border-emerald-200 hover:brightness-95">
+                                                        <DownloadIcon /> <span className="text-[10px] font-bold uppercase tracking-tight truncate">DWN</span>
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => { setEditCardId(f.id); setEditCode(f.code); setEditHistory([f.code]); setEditHistoryIndex(0); setEditTab('code'); }} disabled={f.status !== 'done'} className="flex flex-row items-center justify-center gap-1.5 py-1.5 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-amber-50 text-amber-600 border-amber-200 hover:brightness-95">
+                                                        <EditIcon /> <span className="text-[10px] font-bold uppercase tracking-tight truncate">Edit</span>
+                                                    </button>
+                                                )}
+                                                
+                                                <button onClick={() => setFileToDelete(f.id)} disabled={f.status === 'processing'} className="flex flex-row items-center justify-center gap-1.5 py-1.5 rounded border bg-white border-[#0891B3]/20 text-red-500 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                                    <TrashIcon /> <span className="text-[10px] font-bold uppercase tracking-tight truncate">Del</span>
+                                                </button>
+                                            </div>
+
+                                            <div className="p-2 border-b border-slate-100 flex justify-between items-center gap-2 shrink-0 bg-white">
+                                                <p className="text-[11px] font-bold text-slate-800 truncate" title={f.title}>{f.title}</p>
+                                                <span className={`text-[8px] font-black tracking-widest px-1.5 py-0.5 rounded border whitespace-nowrap ${f.status === 'done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : f.status === 'processing' ? 'bg-[#0891B3]/10 text-[#0891B3] border-[#0891B3]/20' : f.status === 'failed' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                                                    {f.status.toUpperCase()}
+                                                </span>
+                                            </div>
+
+                                            <div className="p-2 flex gap-2 h-[150px] bg-white rounded-b-lg relative">
+                                                <div className="flex-1 rounded-lg overflow-hidden bg-slate-50 relative flex items-center justify-center group cursor-pointer border border-slate-200" onClick={() => { if (f.status === 'done' || (f.mode === 'render' && f.code)) { setPreviewModal(f); setPreviewTab('motion'); } }}>
+                                                    {f.status === 'done' || (f.mode === 'render' && f.code) ? (
+                                                        <>
+                                                            <div className="absolute inset-0 bg-transparent w-full h-full">
+                                                                <iframe title={`Thumb-${f.id}`} srcDoc={wrapSvgAsHtml(f.code, f.resolution, f.duration, 'thumbnail')} sandbox="allow-scripts" className="absolute inset-0 w-full h-full border-none pointer-events-none" scrolling="no" />
+                                                            </div>
+                                                            <div className="absolute inset-0 bg-slate-900/10 group-hover:bg-slate-900/40 transition-all flex items-center justify-center">
+                                                                <PlayIcon className="text-white w-8 h-8 drop-shadow-lg opacity-0 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                                                            </div>
+                                                        </>
+                                                    ) : f.status === 'failed' ? (
+                                                        <div className="p-2 text-center text-red-500"><AlertTriangleIcon className="w-6 h-6 mx-auto" /></div>
+                                                    ) : f.status === 'processing' ? (
+                                                        <div className="flex flex-col items-center text-[#0891B3]"><CustomSpinner className="w-5 h-5 mb-1" /></div>
+                                                    ) : (
+                                                        <div className="text-slate-400"><CodeIcon className="w-6 h-6" /></div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="flex-1 border border-slate-200 rounded-lg bg-slate-50 flex flex-col overflow-hidden">
+                                                    <div className="p-1 border-b border-slate-200 bg-slate-100 sticky top-0 shrink-0">
+                                                        <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest block text-center">JS Code</span>
+                                                    </div>
+                                                    <div className="p-1.5 overflow-y-auto custom-scroll flex-1 bg-white">
+                                                        {f.status === 'processing' ? (
+                                                            <p className="text-[12px] text-slate-500 font-['Share_Tech'] tracking-wide text-center h-full flex items-center justify-center">
+                                                                Memproses<span className="dot-anim inline-block w-4 text-left"></span>
+                                                            </p>
+                                                        ) : f.code ? (
+                                                            <pre className="text-[8px] text-slate-700 font-mono leading-tight whitespace-pre-wrap break-words">
+                                                                <code>{f.code}</code>
+                                                            </pre>
+                                                        ) : (
+                                                            <p className="text-[12px] text-slate-500 font-['Share_Tech'] tracking-wide text-center h-full flex items-center justify-center">
+                                                                Memproses<span className="dot-anim inline-block w-4 text-left"></span>
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    )})}
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center text-center w-full h-full min-h-[50vh]">
+                                    <div className="w-20 h-20 bg-[#0891B3]/5 border border-[#0891B3]/20 text-[#0891B3]/60 rounded-full flex items-center justify-center mb-4">
+                                        <Wand2Icon className="w-8 h-8" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-slate-700 mb-2">Belum Ada Antrean</h3>
+                                    <p className="text-slate-500 text-sm max-w-md">Masukkan prompt, unggah file, atau gunakan Mode Render untuk mengubah ke MP4.</p>
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                </main>
+
+                {/* MODAL PREVIEW RENDER (2 TABS: MOTION & MP4) IDENTIK DENGAN MODAL EDIT */}
+                {previewModal && (() => {
+                    const resStr = previewModal.resolution || '1920x1080';
+                    const parts = resStr.split('x').map(Number);
+                    const resW = parts[0] || 1920;
+                    const resH = parts[1] || 1080;
+                    const aspect = (resW && resH) ? (resW / resH) : 16/9;
+                    const dynamicVh = aspect < 1 ? '95vh' : '85vh';
+
+                    return (
+                        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/80 p-2 sm:p-4 md:p-8 backdrop-blur-sm transition-opacity" onClick={() => setPreviewModal(null)}>
+                            <div className="relative flex flex-col w-full mx-auto transition-all duration-300" style={{ maxWidth: `min(100%, calc((${dynamicVh} - 150px) * ${aspect}))` }} onClick={e => e.stopPropagation()}>
+                                <button className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-2 shadow-xl hover:bg-red-600 hover:scale-110 transition-transform z-[110]" onClick={() => setPreviewModal(null)}><XCircleIcon className="w-5 h-5" /></button>
+                                
+                                <div className="bg-white shadow-2xl flex flex-col rounded-xl overflow-hidden w-full relative">
+                                    
+                                    {previewModal.mode === 'render' && (
+                                        <div className="bg-white p-3 border-b border-slate-200 shrink-0">
+                                            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-full h-[40px] border border-slate-200">
+                                                <button onClick={() => setPreviewTab('motion')} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${previewTab === 'motion' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'}`}>Motion</button>
+                                                <button onClick={() => setPreviewTab('mp4')} disabled={previewModal.status !== 'done'} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${previewTab === 'mp4' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'} disabled:opacity-50 disabled:cursor-not-allowed`}>MP4</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="p-3 w-full bg-white">
+                                        <div className="w-full relative" style={{ paddingBottom: `calc(${1 / aspect * 100}% + 56px)` }}>
+                                            <div className="absolute inset-0 w-full h-full flex flex-col">
+                                                {previewModal.mode === 'render' && previewTab === 'mp4' ? (
+                                                    <>
+                                                        <div className="flex-1 w-full bg-black rounded-lg overflow-hidden flex items-center justify-center relative shadow-inner border border-slate-300">
+                                                            <video src={previewModal.outputUrl} controls autoPlay loop className="w-full h-full object-contain" />
+                                                        </div>
+                                                        {/* Dummy Player Bar for exact 1:1 dimension matching with Motion tab */}
+                                                        <div className="h-[44px] bg-white border border-[#0891B3] rounded-lg px-4 flex items-center gap-3 mt-[12px] shrink-0 opacity-60 pointer-events-none">
+                                                            <div className="w-6 h-6 bg-[#0891B3] rounded-full flex items-center justify-center text-white"><PlayIcon className="w-2.5 h-2.5 ml-0.5" /></div>
+                                                            <div className="flex-1 h-[6px] bg-slate-200 rounded-full relative">
+                                                                <div className="absolute top-0 left-0 h-full bg-[#0891B3] w-full rounded-full"></div>
+                                                                <div className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-[#0891B3] rounded-full shadow-sm"></div>
+                                                            </div>
+                                                            <div className="text-[11px] font-bold text-slate-600 font-mono tabular-nums">{previewModal.duration.toFixed(1)}s</div>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <iframe srcDoc={wrapSvgAsHtml(previewModal.code, resStr, previewModal.duration, 'preview')} className="w-full h-full border-none block" sandbox="allow-scripts" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* MODAL EDIT KODE (TEKS & FILE) */}
+                {editCardId && (() => {
+                    const editCard = activeCards.find(c => c.id === editCardId);
+                    const resStr = editCard?.resolution || '1920x1080';
+                    const parts = resStr.split('x').map(Number);
+                    const resW = parts[0] || 1920;
+                    const resH = parts[1] || 1080;
+                    const aspect = (resW && resH) ? (resW / resH) : 16/9;
+                    const dynamicVh = aspect < 1 ? '95vh' : '85vh';
+                    
+                    return (
+                        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/80 p-2 sm:p-4 md:p-8 backdrop-blur-sm transition-opacity" onClick={() => !isRevising && setEditCardId(null)}>
+                            <div className="relative flex flex-col w-full mx-auto transition-all duration-300" style={{ maxWidth: `min(100%, calc((${dynamicVh} - 150px) * ${aspect}))` }} onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-end mb-2 px-1">
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => { const newIndex = editHistoryIndex - 1; setEditHistoryIndex(newIndex); setEditCode(editHistory[newIndex]); }} disabled={editHistoryIndex <= 0 || isRevising} className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed" title="Undo"><UndoIcon /></button>
+                                        <button onClick={() => { const newIndex = editHistoryIndex + 1; setEditHistoryIndex(newIndex); setEditCode(editHistory[newIndex]); }} disabled={editHistoryIndex >= editHistory.length - 1 || isRevising} className="w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed" title="Redo"><RedoIcon /></button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setEditCardId(null)} className="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 transition shadow-md disabled:opacity-50" disabled={isRevising}>Batal</button>
+                                        <button onClick={() => { setCards(prev => prev.map(c => c.id === editCardId ? { ...c, code: editCode } : c)); setEditCardId(null); }} className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-[#0891B3] hover:bg-[#06738F] shadow-md transition disabled:opacity-50" disabled={isRevising}>Simpan</button>
+                                    </div>
+                                </div>
+                                <div className="bg-white shadow-2xl flex flex-col rounded-xl overflow-hidden w-full relative">
+                                    <div className="bg-white p-3 border-b border-slate-200 shrink-0">
+                                        <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-full h-[40px] border border-slate-200">
+                                            <button onClick={() => setEditTab('code')} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${editTab === 'code' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'}`}><CodeIcon className={`w-3.5 h-3.5 ${editTab === 'code' ? 'text-[#0891B3]' : 'text-slate-400'}`} /><span>Kode</span></button>
+                                            <button onClick={() => setEditTab('preview')} className={`flex-1 flex items-center justify-center gap-2 py-1 text-xs font-bold uppercase tracking-wide rounded-md transition-all ${editTab === 'preview' ? 'bg-white text-[#0891B3] shadow-sm border border-[#0891B3]/20' : 'text-slate-500 hover:bg-slate-200 border border-transparent'}`}><EyeIcon className={`w-3.5 h-3.5 ${editTab === 'preview' ? 'text-[#0891B3]' : 'text-slate-400'}`} /><span>Preview</span></button>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 w-full bg-white">
+                                        <div className="w-full relative" style={{ paddingBottom: `calc(${1 / aspect * 100}% + 56px)` }}>
+                                            <div className="absolute inset-0 w-full h-full flex flex-col">
+                                                {isRevising && <div className="absolute inset-0 z-20 bg-white/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-lg"><CustomSpinner className="w-10 h-10 text-[#0891B3] mb-3" /><p className="text-sm font-bold text-slate-700 tracking-wider">AI sedang merevisi kode...</p></div>}
+                                                {editTab === 'preview' ? (
+                                                    <iframe srcDoc={wrapSvgAsHtml(editCode, resStr, editCard?.duration, 'preview')} className="w-full h-full border-none block" sandbox="allow-scripts" />
+                                                ) : (
+                                                    <>
+                                                        <div className="flex-1 w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg overflow-hidden relative">
+                                                            <textarea value={editCode} onChange={handleEditCodeChange} spellCheck="false" className="absolute inset-0 w-full h-full bg-transparent text-slate-700 font-mono text-[10px] sm:text-[11px] p-4 outline-none resize-none custom-scroll leading-relaxed" />
+                                                        </div>
+                                                        <div className="mt-[12px] h-[44px] w-full bg-white border border-[#0891B3] rounded-lg px-2 flex items-center gap-2 shrink-0 shadow-sm relative z-10 box-border">
+                                                            <input type="text" value={editChatInput} onChange={e => setEditChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !isRevising && handleReviseCode()} placeholder="Instruksi revisi, misal: 'Ubah warna lingkarannya jadi merah'..." disabled={isRevising} className="flex-1 bg-transparent text-xs text-slate-700 outline-none px-2 placeholder:text-slate-400 h-full" />
+                                                            <button onClick={handleReviseCode} disabled={!editChatInput.trim() || isRevising} className="w-[28px] h-[28px] shrink-0 flex items-center justify-center rounded-md bg-[#0891B3] text-white hover:bg-[#06738F] disabled:bg-slate-300 disabled:text-slate-500 transition-colors shadow-sm"><SendIcon className="w-3.5 h-3.5" /></button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* MODALS KONFIRMASI (TETAP SAMA) */}
+                {fileToDelete && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Hapus Kartu?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Kartu dan kode ini akan dihapus permanen.</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setFileToDelete(null)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={() => { setCards(prev => prev.filter(f => f.id !== fileToDelete)); setFileToDelete(null); }} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Hapus</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {clearAllConfirm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Hapus Semua?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Anda akan menghapus <b>seluruh antrean</b> secara permanen.</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setClearAllConfirm(false)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={confirmClearAllAction} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Hapus Semua</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {blueprintToDeleteConfirm && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Hapus Blueprint?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Anda yakin ingin menghapus blueprint ini dari daftar?</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setBlueprintToDeleteConfirm(null)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={() => { setBlueprints(prev => prev.filter(b => b.id !== blueprintToDeleteConfirm)); setBlueprintToDeleteConfirm(null); }} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Hapus</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {clearAllBlueprintsConfirm && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Kosongkan Blueprint?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Seluruh blueprint yang ada di daftar akan dihapus permanen.</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setClearAllBlueprintsConfirm(false)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={() => { setBlueprints([]); setClearAllBlueprintsConfirm(false); }} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Kosongkan</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {fileToDeleteConfirm && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Hapus File?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Anda yakin ingin menghapus referensi file ini dari antrean?</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setFileToDeleteConfirm(null)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={() => {
+                                    if(inputMode === 'file') setUploadedFilesData(prev => prev.filter(f => f.id !== fileToDeleteConfirm));
+                                    else if(inputMode === 'render') setUploadedRenderFiles(prev => prev.filter(f => f.id !== fileToDeleteConfirm));
+                                    setFileToDeleteConfirm(null);
+                                }} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Hapus</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {clearAllFilesConfirm && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className="bg-red-100 p-3 rounded-full mb-3"><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">Kosongkan Wadah?</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">Seluruh file di dalam kotak ini akan dihapus.</p>
+                            <div className="flex w-full gap-3">
+                                <button onClick={() => setClearAllFilesConfirm(false)} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2 rounded hover:bg-slate-300 transition text-xs shadow-sm">Batal</button>
+                                <button onClick={() => {
+                                    if(inputMode === 'file') setUploadedFilesData([]);
+                                    else if(inputMode === 'render') setUploadedRenderFiles([]);
+                                    setClearAllFilesConfirm(false);
+                                }} className="flex-1 bg-red-600 text-white font-bold py-2 rounded hover:bg-red-700 transition shadow-sm text-xs">Ya, Kosongkan</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {filePreviewModal && (
+                    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-900/80 p-4 md:p-8 backdrop-blur-sm transition-opacity" onClick={() => setFilePreviewModal(null)}>
+                        <div className="relative bg-white shadow-2xl flex flex-col rounded-xl p-2 mx-auto w-fit h-fit max-w-full max-h-full" onClick={e => e.stopPropagation()}>
+                            <button className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full p-2 shadow-xl hover:bg-red-600 hover:scale-110 transition-transform z-[140]" onClick={() => setFilePreviewModal(null)}><XCircleIcon className="w-5 h-5" /></button>
+                            <div className="relative rounded-lg overflow-hidden flex items-center justify-center bg-transparent">
+                                {filePreviewModal.type && filePreviewModal.type.startsWith('image/') ? (
+                                    <img src={filePreviewModal.url} alt="Preview" className="max-w-[90vw] max-h-[85vh] object-contain block" />
+                                ) : (
+                                    <video src={filePreviewModal.url} controls autoPlay loop className="max-w-[90vw] max-h-[85vh] object-contain block" />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {globalMessage && (
+                    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm flex flex-col items-center text-center">
+                            <div className={`p-3 rounded-full mb-3 ${globalMessage.type === 'error' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}><AlertTriangleIcon /></div>
+                            <h3 className="text-lg font-bold text-slate-800">{globalMessage.title}</h3>
+                            <p className="text-sm text-slate-600 mt-2 mb-6">{globalMessage.text}</p>
+                            <button onClick={() => setGlobalMessage(null)} className="w-full bg-[#0891B3] text-white font-bold py-2 rounded-lg hover:bg-[#06738F] transition shadow-sm">Tutup</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </>
+    );
+}
