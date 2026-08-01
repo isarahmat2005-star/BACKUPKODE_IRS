@@ -1,0 +1,7 @@
+gradio==4.36.1
+huggingface_hub==0.23.2
+pydantic==2.10.6
+playwright
+imageio
+imageio-ffmpeg
+numpy
